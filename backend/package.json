@@ -1,0 +1,17 @@
+{
+  "name": "kids-chatbot-backend",
+  "version": "1.0.0",
+  "description": "Backend API for kids AI chatbot using Gemini",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": ["kids", "chatbot", "ai", "gemini"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.0",
+    "express": "^5.1.0"
+  }
+}
