@@ -12,6 +12,18 @@ app.get('/', (req, res) => {
   res.send('Hello from backend!');
 });
 
+// // used to test db connection
+// const pool = require('./db');
+
+// app.get('/api/test-db', async (req, res) => {
+//   try {
+//     const result = await pool.query('SELECT NOW()');
+//     res.json({ time: result.rows[0].now });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
 app.post('/api/chat', async (req, res) => {
   try {
     const { message, topic } = req.body;
