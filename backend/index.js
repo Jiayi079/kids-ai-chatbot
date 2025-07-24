@@ -116,6 +116,7 @@ app.post('/api/parent-login', async (req, res) => {
     // find user by email
     const result = await pool.query('SELECT id, email, password_hash, username FROM parents WHERE email = $1', [email]);
     if (result.rows.length === 0) {
+      console.log(`Failed parent login (not found): ${email}`);
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
     const user = result.rows[0];
@@ -123,6 +124,7 @@ app.post('/api/parent-login', async (req, res) => {
     // compare password
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
+      console.log(`Failed parent login (wrong password): ${email}`);
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
@@ -133,6 +135,7 @@ app.post('/api/parent-login', async (req, res) => {
       { expiresIn: '7d' }
     );
 
+    console.log(`Parent login: ${email} at ${new Date().toISOString()}`);
     res.json({
       token,
       user: {
@@ -155,19 +158,21 @@ app.post('/api/child-login', async (req, res) => {
         return res.status(400).json({ error: 'Username and password are required.' });
       }
   
-      // Find child by username
+      // find child by username
       const result = await pool.query(
         'SELECT id, parent_id, username, password_hash, name, age, daily_limit_minutes, is_active FROM children WHERE username = $1',
         [username]
       );
       if (result.rows.length === 0) {
+        console.log(`Failed child login (not found): ${username}`);
         return res.status(401).json({ error: 'Invalid username or password.' });
       }
       const child = result.rows[0];
   
-      // Compare password
+      // compare password
       const isMatch = await bcrypt.compare(password, child.password_hash);
       if (!isMatch) {
+        console.log(`Failed child login (wrong password): ${username}`);
         return res.status(401).json({ error: 'Invalid username or password.' });
       }
   
@@ -178,6 +183,7 @@ app.post('/api/child-login', async (req, res) => {
         { expiresIn: '7d' }
       );
   
+      console.log(`Child login: ${username} at ${new Date().toISOString()}`);
       res.json({
         token,
         child: {
@@ -196,7 +202,6 @@ app.post('/api/child-login', async (req, res) => {
     }
   });
   
-
 // registration
 app.post('/api/register', async (req, res) => {
   try {
@@ -208,6 +213,7 @@ app.post('/api/register', async (req, res) => {
     // check if email already exists
     const existing = await pool.query('SELECT id FROM parents WHERE email = $1', [email]);
     if (existing.rows.length > 0) {
+      console.log(`Registration failed (email exists): ${email}`);
       return res.status(409).json({ error: 'Email already registered.' });
     }
 
@@ -220,6 +226,7 @@ app.post('/api/register', async (req, res) => {
         [email, password_hash, username]
     );
 
+    console.log(`Parent registered: ${email} at ${new Date().toISOString()}`);
     res.status(201).json({ user: result.rows[0] });
   } catch (err) {
     console.error('Registration error:', err);
@@ -243,6 +250,7 @@ app.post('/api/children', authenticateToken, async (req, res) => {
       [parentId, name, age, daily_limit_minutes || 60]
     );
 
+    console.log(`Child created: ${name} (parent: ${parentId}) at ${new Date().toISOString()}`);
     res.status(201).json({ child: result.rows[0] });
   } catch (err) {
     console.error('Create child error:', err);
@@ -279,6 +287,7 @@ app.post('/api/chat-session', authenticateToken, requireChildJWT, async (req, re
        RETURNING *`,
       [child_id, topic]
     );
+    console.log(`Chat session created: child ${child_id}, topic ${topic}, session ${newSession.rows[0].id}`);
     res.status(201).json({ session: newSession.rows[0] });
   } catch (err) {
     console.error('Chat session error:', err);
@@ -335,6 +344,7 @@ app.post('/api/chat-message', authenticateToken, requireChildJWT, async (req, re
       [session_id]
     );
 
+    console.log(`Chat message stored: session ${session_id}, from ${from_type}`);
     res.status(201).json({ message: result.rows[0] });
   } catch (err) {
     console.error('Chat message error:', err);
