@@ -4,6 +4,7 @@ require('dotenv').config();
 const pool = require('./db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const authenticateToken = require('./authMiddleware');
 
 const app = express();
 const PORT = 3001;
@@ -173,6 +174,45 @@ app.post('/api/register', async (req, res) => {
   } catch (err) {
     console.error('Registration error:', err);
     res.status(500).json({ error: 'Registration failed.' });
+  }
+});
+
+// create a child account
+app.post('/api/children', authenticateToken, async (req, res) => {
+  try {
+    const parentId = req.user.id;
+    const { name, age, daily_limit_minutes } = req.body;
+    if (!name || !age) {
+      return res.status(400).json({ error: 'Name and age are required.' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO children (parent_id, name, age, daily_limit_minutes)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, name, age, daily_limit_minutes, is_active, created_at`,
+      [parentId, name, age, daily_limit_minutes || 60]
+    );
+
+    res.status(201).json({ child: result.rows[0] });
+  } catch (err) {
+    console.error('Create child error:', err);
+    res.status(500).json({ error: 'Failed to create child account.' });
+  }
+});
+
+// get a list all children for the logged in parent
+app.get('/api/children', authenticateToken, async (req, res) => {
+  try {
+    const parentId = req.user.id;
+    const result = await pool.query(
+      `SELECT id, name, age, daily_limit_minutes, is_active, created_at
+       FROM children WHERE parent_id = $1 ORDER BY created_at DESC`,
+      [parentId]
+    );
+    res.json({ children: result.rows });
+  } catch (err) {
+    console.error('List children error:', err);
+    res.status(500).json({ error: 'Failed to fetch children.' });
   }
 });
 
