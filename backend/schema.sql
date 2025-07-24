@@ -3,7 +3,7 @@ CREATE TABLE parents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email VARCHAR(255) UNIQUE NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
-  name VARCHAR(100),
+  username VARCHAR(100),
   subscription_status VARCHAR(20) DEFAULT 'free',
   created_at TIMESTAMP DEFAULT NOW()
 );

@@ -1,20 +1,16 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+const pool = require('./db');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const PORT = 3001;
-
 app.use(cors());
 app.use(express.json());
 
-app.get('/', (req, res) => {
-  res.send('Hello from backend!');
-});
-
 // // used to test db connection
-// const pool = require('./db');
-
 // app.get('/api/test-db', async (req, res) => {
 //   try {
 //     const result = await pool.query('SELECT NOW()');
@@ -105,6 +101,78 @@ app.post('/api/chat', async (req, res) => {
       error: 'Sorry, I had trouble thinking of a response. Try again!',
       buttons: ['Try again', 'Ask something else', 'Start over']
     });
+  }
+});
+
+// login
+app.post('/api/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required.' });
+    }
+
+    // find user by email
+    const result = await pool.query('SELECT id, email, password_hash, username FROM parents WHERE email = $1', [email]);
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+    const user = result.rows[0];
+
+    // compare password
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    // JWT token
+    const token = jwt.sign(
+      { id: user.id, email: user.email, username: user.username },
+      process.env.JWT_SECRET || 'dev_secret',
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username
+      }
+    });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'Login failed.' });
+  }
+});
+
+// registration
+app.post('/api/register', async (req, res) => {
+  try {
+    const { email, password, username } = req.body;
+    if (!email || !password || !username) {
+      return res.status(400).json({ error: 'Email, password, and username are required.' });
+    }
+
+    // check if email already exists
+    const existing = await pool.query('SELECT id FROM parents WHERE email = $1', [email]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'Email already registered.' });
+    }
+
+    // hash the password
+    const password_hash = await bcrypt.hash(password, 10);
+
+    // add to db
+    const result = await pool.query(
+        'INSERT INTO parents (email, password_hash, username) VALUES ($1, $2, $3) RETURNING id, email, username, created_at',
+        [email, password_hash, username]
+    );
+
+    res.status(201).json({ user: result.rows[0] });
+  } catch (err) {
+    console.error('Registration error:', err);
+    res.status(500).json({ error: 'Registration failed.' });
   }
 });
 
