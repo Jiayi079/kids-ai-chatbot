@@ -105,8 +105,8 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// login
-app.post('/api/login', async (req, res) => {
+// parentlogin
+app.post('/api/parent-login', async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -146,6 +146,56 @@ app.post('/api/login', async (req, res) => {
     res.status(500).json({ error: 'Login failed.' });
   }
 });
+
+// children login
+app.post('/api/child-login', async (req, res) => {
+    try {
+      const { username, password } = req.body;
+      if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required.' });
+      }
+  
+      // Find child by username
+      const result = await pool.query(
+        'SELECT id, parent_id, username, password_hash, name, age, daily_limit_minutes, is_active FROM children WHERE username = $1',
+        [username]
+      );
+      if (result.rows.length === 0) {
+        return res.status(401).json({ error: 'Invalid username or password.' });
+      }
+      const child = result.rows[0];
+  
+      // Compare password
+      const isMatch = await bcrypt.compare(password, child.password_hash);
+      if (!isMatch) {
+        return res.status(401).json({ error: 'Invalid username or password.' });
+      }
+  
+      // JWT token for child
+      const token = jwt.sign(
+        { id: child.id, username: child.username, parent_id: child.parent_id, type: 'child' },
+        process.env.JWT_SECRET || 'dev_secret',
+        { expiresIn: '7d' }
+      );
+  
+      res.json({
+        token,
+        child: {
+          id: child.id,
+          username: child.username,
+          name: child.name,
+          age: child.age,
+          daily_limit_minutes: child.daily_limit_minutes,
+          is_active: child.is_active,
+          parent_id: child.parent_id
+        }
+      });
+    } catch (err) {
+      console.error('Child login error:', err);
+      res.status(500).json({ error: 'Login failed.' });
+    }
+  });
+  
 
 // registration
 app.post('/api/register', async (req, res) => {
@@ -216,6 +266,90 @@ app.get('/api/children', authenticateToken, async (req, res) => {
   }
 });
 
+// create a new chat session
+app.post('/api/chat-session', authenticateToken, requireChildJWT, async (req, res) => {
+  try {
+    const { child_id, topic } = req.body;
+    if (!child_id || !topic) {
+      return res.status(400).json({ error: 'child_id and topic are required.' });
+    }
+    const newSession = await pool.query(
+      `INSERT INTO chat_sessions (child_id, topic)
+       VALUES ($1, $2)
+       RETURNING *`,
+      [child_id, topic]
+    );
+    res.status(201).json({ session: newSession.rows[0] });
+  } catch (err) {
+    console.error('Chat session error:', err);
+    res.status(500).json({ error: 'Failed to create chat session.' });
+  }
+});
+
+// get all chat sessions
+app.get('/api/chat-session/:child_id', authenticateToken, async (req, res) => {
+  try {
+    const { child_id } = req.params;
+    if (req.user.type === 'child') {
+      if (req.user.id !== child_id) {
+        return res.status(403).json({ error: 'Access denied.' });
+      }
+    } else if (req.user.type === 'parent') {
+      // Check if this child belongs to the parent
+      const result = await pool.query('SELECT id FROM children WHERE id = $1 AND parent_id = $2', [child_id, req.user.id]);
+      if (result.rows.length === 0) {
+        return res.status(403).json({ error: 'Access denied.' });
+      }
+    } else {
+      return res.status(403).json({ error: 'Invalid token.' });
+    }
+    const sessions = await pool.query(
+      `SELECT * FROM chat_sessions WHERE child_id = $1 ORDER BY started_at DESC`,
+      [child_id]
+    );
+    res.json({ sessions: sessions.rows });
+  } catch (err) {
+    console.error('Get chat sessions error:', err);
+    res.status(500).json({ error: 'Failed to fetch chat sessions.' });
+  }
+});
+
+// store a chat message
+app.post('/api/chat-message', authenticateToken, requireChildJWT, async (req, res) => {
+  try {
+    const { session_id, from_type, message_text, buttons_offered } = req.body;
+    if (!session_id || !from_type || !message_text) {
+      return res.status(400).json({ error: 'session_id, from_type, and message_text are required.' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO chat_messages (session_id, from_type, message_text, buttons_offered)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [session_id, from_type, message_text, buttons_offered ? JSON.stringify(buttons_offered) : null]
+    );
+
+    //increment total_messages in chat_sessions
+    await pool.query(
+      `UPDATE chat_sessions SET total_messages = total_messages + 1 WHERE id = $1`,
+      [session_id]
+    );
+
+    res.status(201).json({ message: result.rows[0] });
+  } catch (err) {
+    console.error('Chat message error:', err);
+    res.status(500).json({ error: 'Failed to store chat message.' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Backend server running at http://localhost:${PORT}`);
 });
+
+// helper function to only allow child JWT
+function requireChildJWT(req, res, next) {
+  if (!req.user || req.user.type !== 'child') {
+    return res.status(403).json({ error: 'Child authentication required.' });
+  }
+  next();
+}

@@ -16,6 +16,8 @@ CREATE TABLE children (
   age INTEGER,
   daily_limit_minutes INTEGER DEFAULT 60,
   is_active BOOLEAN DEFAULT true,
+  username VARCHAR(100) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );
 
