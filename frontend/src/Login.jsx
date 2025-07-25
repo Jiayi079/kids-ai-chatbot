@@ -28,7 +28,16 @@ export default function Login({ onLogin }) {
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Login failed');
+      
+      if (!res.ok) {
+        if (res.status === 403 && mode === 'child' && data.error?.includes('Daily usage limit exceeded')) {
+          // Handle usage limit exceeded
+          setError(`Daily usage limit exceeded! You've used ${data.usageInfo?.todayUsage || 0} minutes today. Please try again tomorrow.`);
+        } else {
+          throw new Error(data.error || 'Login failed');
+        }
+        return;
+      }
       
       // for child login, track usage start
       if (mode === 'child') {

@@ -8,6 +8,7 @@ export default function ChildMain({ token, child, user }) {
   const [error, setError] = useState('');
   const [hoveredTopic, setHoveredTopic] = useState(null);
   const [hoveredSession, setHoveredSession] = useState(null);
+  const [usageInfo, setUsageInfo] = useState(null);
 
   const API_URL = import.meta.env.VITE_API_URL;
 
@@ -20,26 +21,22 @@ export default function ChildMain({ token, child, user }) {
 
   useEffect(() => {
     fetchChatSessions();
-    
-    // Add beforeunload event listener to track usage if child closes browser
-    const handleBeforeUnload = async () => {
-      try {
-        // Use sendBeacon for reliable data sending during page unload
-        const data = JSON.stringify({ 
-          childId: child.id
-        });
-        navigator.sendBeacon(`${API_URL}/child-usage-track`, data);
-      } catch (err) {
-        console.error('Failed to track usage on page unload:', err);
-      }
-    };
-    
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
+    checkUsageLimit();
   }, [child]);
+
+  const checkUsageLimit = async () => {
+    try {
+      const response = await fetch(`${API_URL}/children/${child.id}/usage-limit-check`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setUsageInfo(data);
+      }
+    } catch (err) {
+      console.error('Failed to check usage limit:', err);
+    }
+  };
 
   const fetchChatSessions = async () => {
     try {
@@ -60,6 +57,14 @@ export default function ChildMain({ token, child, user }) {
   const handleTopicClick = async (topic) => {
     setIsLoading(true);
     setError('');
+    
+    // check usage limit before creating new session
+    if (usageInfo && usageInfo.isExceeded) {
+      setError('Daily usage limit exceeded. Please try again tomorrow.');
+      setIsLoading(false);
+      return;
+    }
+    
     // create a new chat session, then navigate to chat page
     try {
       const response = await fetch(`${API_URL}/chat-session`, {
@@ -81,16 +86,17 @@ export default function ChildMain({ token, child, user }) {
   };
 
   const handleSessionClick = (session) => {
+    // check usage limit before accessing existing session
+    if (usageInfo && usageInfo.isExceeded) {
+      setError('Daily usage limit exceeded. Please try again tomorrow.');
+      return;
+    }
     navigate(`/child-chat/${session.id}`);
   };
 
   const handleLogout = async () => {
-    console.log('ChildMain logout called');
-    console.log('Child data:', child);
-    
     // Track usage before logout
     try {
-      console.log('Sending logout request to backend...');
       const response = await fetch(`${API_URL}/child-logout`, {
         method: 'POST',
         headers: { 
@@ -100,11 +106,8 @@ export default function ChildMain({ token, child, user }) {
       });
       
       const result = await response.json();
-      console.log('Logout response:', result);
       
-      if (response.ok) {
-        console.log('Usage tracking successful');
-      } else {
+      if (!response.ok) {
         console.error('Usage tracking failed:', result.error);
       }
     } catch (err) {
@@ -146,6 +149,45 @@ export default function ChildMain({ token, child, user }) {
         <p style={{ fontSize: '1.3rem', color: '#2d3a4a', marginBottom: '32px', textAlign: 'center', fontWeight: 500 }}>
           What would you like to learn about today?
         </p>
+        
+        {/* Usage limit display */}
+        {usageInfo && (
+          <div style={{ 
+            margin: '0 auto 32px auto', 
+            padding: '16px 24px', 
+            borderRadius: '16px', 
+            background: usageInfo.isExceeded 
+              ? 'linear-gradient(90deg, #ffebee 0%, #ffcdd2 100%)' 
+              : usageInfo.usagePercentage > 80 
+                ? 'linear-gradient(90deg, #fff3e0 0%, #ffe0b2 100%)'
+                : 'linear-gradient(90deg, #e8f5e8 0%, #c8e6c9 100%)',
+            border: usageInfo.isExceeded 
+              ? '2px solid #f44336' 
+              : usageInfo.usagePercentage > 80 
+                ? '2px solid #ff9800'
+                : '2px solid #4caf50',
+            maxWidth: '400px',
+            textAlign: 'center'
+          }}>
+            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '8px' }}>
+              {usageInfo.isExceeded 
+                ? '❌ Daily Limit Reached!' 
+                : usageInfo.usagePercentage > 80 
+                  ? '⚠️ Almost at Daily Limit'
+                  : '⏰ Daily Usage'
+              }
+            </div>
+            <div style={{ fontSize: '1rem', marginBottom: '4px' }}>
+              Used: <span style={{ fontWeight: 'bold' }}>{usageInfo.todayUsage} minutes</span> / {usageInfo.dailyLimit} minutes
+            </div>
+            <div style={{ fontSize: '0.9rem', color: '#666' }}>
+              {usageInfo.isExceeded 
+                ? 'Please try again tomorrow!'
+                : `Remaining: ${usageInfo.remainingMinutes} minutes`
+              }
+            </div>
+          </div>
+        )}
         <div
           style={{
             display: 'flex',

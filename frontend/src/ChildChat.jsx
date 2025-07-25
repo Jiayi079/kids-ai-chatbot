@@ -21,25 +21,6 @@ export default function ChildChat({ token, child, user }) {
     if (sessionId) {
       fetchSessionAndMessages(sessionId);
     }
-    
-    // Add beforeunload event listener to track usage if child closes browser
-    const handleBeforeUnload = async () => {
-      try {
-        // Use sendBeacon for reliable data sending during page unload
-        const data = JSON.stringify({ 
-          childId: child.id
-        });
-        navigator.sendBeacon(`${API_URL}/child-usage-track`, data);
-      } catch (err) {
-        console.error('Failed to track usage on page unload:', err);
-      }
-    };
-    
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
   }, [sessionId, child]);
 
   useEffect(() => {
@@ -160,12 +141,8 @@ export default function ChildChat({ token, child, user }) {
   const handleButtonClick = (buttonText) => setInputMessage(buttonText);
   const handleKeyPress = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
   const handleLogout = async () => { 
-    console.log('ChildChat logout called');
-    console.log('Child data:', child);
-    
     // track usage before logout
     try {
-      console.log('Sending logout request to backend...');
       const response = await fetch(`${API_URL}/child-logout`, {
         method: 'POST',
         headers: { 
@@ -175,11 +152,8 @@ export default function ChildChat({ token, child, user }) {
       });
       
       const result = await response.json();
-      console.log('Logout response:', result);
       
-      if (response.ok) {
-        console.log('Usage tracking successful');
-      } else {
+      if (!response.ok) {
         console.error('Usage tracking failed:', result.error);
       }
     } catch (err) {
