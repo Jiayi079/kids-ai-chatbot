@@ -237,14 +237,34 @@ body, html, #root {
   font-size: 1.2em;
 }
 
-.msg-kid {
+/* Kid (user) message on the right */
+.msg-kid-right {
+  background: #fffbe7;
+  color: #333;
+  border-radius: 22px 22px 6px 22px;
+  margin-left: 60px;
+  margin-right: 0;
   align-self: flex-end;
-  background: #d0f4ff;
+  text-align: right;
+  box-shadow: 0 2px 8px #0001;
+  padding: 16px 24px;
+  margin-bottom: 12px;
+  max-width: 70%;
 }
 
-.msg-ai {
+/* AI message on the left */
+.msg-ai-left {
+  background: #ffd6f7;
+  color: #333;
+  border-radius: 22px 22px 22px 6px;
+  margin-right: 60px;
+  margin-left: 0;
   align-self: flex-start;
-  background: #ffe0f7;
+  text-align: left;
+  box-shadow: 0 2px 8px #0001;
+  padding: 16px 24px;
+  margin-bottom: 12px;
+  max-width: 70%;
 }
 
 .msg.loading {
