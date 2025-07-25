@@ -326,6 +326,52 @@ app.get('/api/chat-session/:child_id', authenticateToken, async (req, res) => {
   }
 });
 
+// get messages for a chat session
+app.get('/api/chat-message/:session_id', authenticateToken, async (req, res) => {
+  try {
+    const { session_id } = req.params;
+    
+    // Verify access to this session
+    const sessionCheck = await pool.query(
+      `SELECT cs.child_id, c.parent_id 
+       FROM chat_sessions cs 
+       JOIN children c ON cs.child_id = c.id 
+       WHERE cs.id = $1`,
+      [session_id]
+    );
+    
+    if (sessionCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Session not found.' });
+    }
+    
+    const session = sessionCheck.rows[0];
+    
+    // check if user has access to this session
+    if (req.user.type === 'child') {
+      if (req.user.id !== session.child_id) {
+        return res.status(403).json({ error: 'Access denied.' });
+      }
+    } else if (req.user.type === 'parent') {
+      if (req.user.id !== session.parent_id) {
+        return res.status(403).json({ error: 'Access denied.' });
+      }
+    } else {
+      return res.status(403).json({ error: 'Invalid token.' });
+    }
+    
+    const messages = await pool.query(
+      `SELECT * FROM chat_messages WHERE session_id = $1 ORDER BY created_at ASC`,
+      [session_id]
+    );
+    
+    console.log(`Chat messages fetched: session ${session_id}, count ${messages.rows.length}`);
+    res.json({ messages: messages.rows });
+  } catch (err) {
+    console.error('Get chat messages error:', err);
+    res.status(500).json({ error: 'Failed to fetch chat messages.' });
+  }
+});
+
 // store a chat message
 app.post('/api/chat-message', authenticateToken, requireChildJWT, async (req, res) => {
   try {
