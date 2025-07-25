@@ -18,7 +18,7 @@ A safe, educational AI chatbot web app designed for children aged 6-12, with par
 - **Subscription Plans**: Free, Basic ($9.99/month), Premium ($19.99/month)
 - **Safety Controls**: Age-appropriate content filtering and supervision tools
 
-## 💳 Subscription Plans
+## Subscription Plans
 
 | Plan | Children | Daily Limit | Price |
 |------|----------|-------------|-------|
@@ -118,7 +118,7 @@ VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_key
 3. **Chat** → Type or tap buttons to talk with AI
 4. **Learn** → Get age-appropriate, safe responses
 
-## 🛡️ Safety Features
+## Safety Features
 
 - **Age Detection**: AI knows child's exact age from database
 - **Content Filtering**: All responses checked for appropriateness
@@ -126,7 +126,7 @@ VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_key
 - **Usage Limits**: Daily time restrictions for healthy balance
 - **Parent Oversight**: Full visibility and control for parents
 
-## 🏗️ Tech Stack
+## Tech Stack
 
 - **Frontend**: React + Vite + Stripe Elements
 - **Backend**: Node.js + Express + PostgreSQL
@@ -135,7 +135,7 @@ VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_key
 - **Authentication**: JWT tokens
 - **Database**: PostgreSQL with usage tracking
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 kids-ai-chatbot/
@@ -171,10 +171,10 @@ kids-ai-chatbot/
 - **Custom Learning**: Personalized learning paths and topic creation
 - **Multi-language**: Support for multiple languages and cultures
 
-## 📄 License
+## License
 
 ISC License
 
-## 🆘 Support
+## Support
 
 Open an issue on GitHub for questions or problems.
