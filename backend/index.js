@@ -130,7 +130,7 @@ app.post('/api/parent-login', async (req, res) => {
 
     // JWT token
     const token = jwt.sign(
-      { id: user.id, email: user.email, username: user.username },
+      { id: user.id, email: user.email, username: user.username, type: 'parent' },
       process.env.JWT_SECRET || 'dev_secret',
       { expiresIn: '7d' }
     );
@@ -302,6 +302,7 @@ app.post('/api/chat-session', authenticateToken, requireChildJWT, async (req, re
 app.get('/api/chat-session/:child_id', authenticateToken, async (req, res) => {
   try {
     const { child_id } = req.params;
+    
     if (req.user.type === 'child') {
       if (req.user.id !== child_id) {
         return res.status(403).json({ error: 'Access denied.' });
