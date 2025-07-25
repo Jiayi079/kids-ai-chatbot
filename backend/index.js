@@ -11,16 +11,6 @@ const PORT = 3001;
 app.use(cors());
 app.use(express.json());
 
-// // used to test db connection
-// app.get('/api/test-db', async (req, res) => {
-//   try {
-//     const result = await pool.query('SELECT NOW()');
-//     res.json({ time: result.rows[0].now });
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// });
-
 app.post('/api/chat', async (req, res) => {
   try {
     const { message, topic } = req.body;
@@ -176,6 +166,52 @@ app.post('/api/child-login', async (req, res) => {
         return res.status(401).json({ error: 'Invalid username or password.' });
       }
   
+      // check if child has exceeded daily usage limit
+      const today = new Date().toISOString().split('T')[0];
+      const usageResult = await pool.query(
+        `SELECT event_type, event_time 
+         FROM usage_logs 
+         WHERE child_id = $1 
+         AND date = $2 
+         ORDER BY event_time ASC`,
+        [child.id, today]
+      );
+      
+      // calculate total usage from login/logout pairs
+      let totalMinutes = 0;
+      let loginTime = null;
+      
+      for (const event of usageResult.rows) {
+        if (event.event_type === 'login') {
+          loginTime = new Date(event.event_time);
+        } else if (event.event_type === 'logout' && loginTime) {
+          const logoutTime = new Date(event.event_time);
+          const sessionMinutes = Math.ceil((logoutTime - loginTime) / (1000 * 60));
+          totalMinutes += Math.max(0, sessionMinutes);
+          loginTime = null; // reset for next session
+        }
+      }
+      
+      // if there's an unclosed session (login without logout), calculate until now
+      if (loginTime) {
+        const now = new Date();
+        const sessionMinutes = Math.ceil((now - loginTime) / (1000 * 60));
+        totalMinutes += Math.max(0, sessionMinutes);
+      }
+      
+      // check if usage limit is exceeded
+      if (totalMinutes >= child.daily_limit_minutes) {
+        console.log(`Child ${username} login blocked - daily limit exceeded: ${totalMinutes}/${child.daily_limit_minutes} minutes`);
+        return res.status(403).json({ 
+          error: 'Daily usage limit exceeded. Please try again tomorrow.',
+          usageInfo: {
+            todayUsage: totalMinutes,
+            dailyLimit: child.daily_limit_minutes,
+            remainingMinutes: 0
+          }
+        });
+      }
+  
       // JWT token for child
       const token = jwt.sign(
         { id: child.id, username: child.username, parent_id: child.parent_id, type: 'child' },
@@ -194,6 +230,11 @@ app.post('/api/child-login', async (req, res) => {
           daily_limit_minutes: child.daily_limit_minutes,
           is_active: child.is_active,
           parent_id: child.parent_id
+        },
+        usageInfo: {
+          todayUsage: totalMinutes,
+          dailyLimit: child.daily_limit_minutes,
+          remainingMinutes: Math.max(0, child.daily_limit_minutes - totalMinutes)
         }
       });
     } catch (err) {
@@ -461,26 +502,81 @@ app.post('/api/child-logout', authenticateToken, requireChildJWT, async (req, re
   }
 });
 
-// track child usage time
-app.post('/api/child-usage-track', async (req, res) => {
+
+
+// check if child has exceeded daily usage limit
+app.get('/api/children/:child_id/usage-limit-check', authenticateToken, async (req, res) => {
   try {
-    const { childId } = req.body;
+    const { child_id } = req.params;
     
-    if (!childId) {
-      return res.status(400).json({ error: 'Child ID is required.' });
+    // verify access to this child
+    if (req.user.type === 'child') {
+      if (req.user.id !== child_id) {
+        return res.status(403).json({ error: 'Access denied.' });
+      }
+    } else if (req.user.type === 'parent') {
+      const childCheck = await pool.query('SELECT id FROM children WHERE id = $1 AND parent_id = $2', [child_id, req.user.id]);
+      if (childCheck.rows.length === 0) {
+        return res.status(403).json({ error: 'Access denied.' });
+      }
+    } else {
+      return res.status(403).json({ error: 'Invalid token.' });
     }
     
-    // record logout event for page unload
-    const logoutEvent = await pool.query(
-      'INSERT INTO usage_logs (child_id, event_type, event_time) VALUES ($1, $2, $3) RETURNING *',
-      [childId, 'logout', new Date()]
+    const today = new Date().toISOString().split('T')[0];
+    
+    // get all session events for today
+    const eventsResult = await pool.query(
+      `SELECT event_type, event_time 
+       FROM usage_logs 
+       WHERE child_id = $1 
+       AND date = $2 
+       ORDER BY event_time ASC`,
+      [child_id, today]
     );
     
-    console.log(`Child ${childId} page unload logout event recorded: ${logoutEvent.rows[0].id}`);
-    res.json({ success: true, message: 'Page unload logout event recorded' });
+    // calculate total usage from login/logout pairs
+    let totalMinutes = 0;
+    let loginTime = null;
+    
+    for (const event of eventsResult.rows) {
+      if (event.event_type === 'login') {
+        loginTime = new Date(event.event_time);
+      } else if (event.event_type === 'logout' && loginTime) {
+        const logoutTime = new Date(event.event_time);
+        const sessionMinutes = Math.ceil((logoutTime - loginTime) / (1000 * 60));
+        totalMinutes += Math.max(0, sessionMinutes);
+        loginTime = null; // reset for next session
+      }
+    }
+    
+    // if there's an unclosed session (login without logout), calculate until now
+    if (loginTime) {
+      const now = new Date();
+      const sessionMinutes = Math.ceil((now - loginTime) / (1000 * 60));
+      totalMinutes += Math.max(0, sessionMinutes);
+    }
+    
+    // get child's daily limit
+    const childResult = await pool.query(
+      'SELECT daily_limit_minutes FROM children WHERE id = $1',
+      [child_id]
+    );
+    
+    const dailyLimit = childResult.rows[0] ? childResult.rows[0].daily_limit_minutes : 60;
+    const usagePercentage = dailyLimit > 0 ? Math.round((totalMinutes / dailyLimit) * 100) : 0;
+    const isExceeded = totalMinutes >= dailyLimit;
+    
+    res.json({
+      todayUsage: totalMinutes,
+      dailyLimit,
+      usagePercentage,
+      isExceeded,
+      remainingMinutes: Math.max(0, dailyLimit - totalMinutes)
+    });
   } catch (err) {
-    console.error('Page unload usage tracking error:', err);
-    res.status(500).json({ error: 'Failed to track page unload usage.' });
+    console.error('Usage limit check error:', err);
+    res.status(500).json({ error: 'Failed to check usage limit.' });
   }
 });
 
