@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export default function ParentDashboard({ token }) {
+  const navigate = useNavigate();
   const [children, setChildren] = useState([]);
   const [selectedChild, setSelectedChild] = useState(null);
   const [sessions, setSessions] = useState([]);
@@ -73,9 +75,30 @@ export default function ParentDashboard({ token }) {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    navigate('/login');
+  };
+
   return (
     <div>
-      <h2>Parent Dashboard</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h2>Parent Dashboard</h2>
+        <button 
+          onClick={handleLogout}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#ff6b6b',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+        >
+          Logout
+        </button>
+      </div>
       <h3>Add New Child</h3>
       <form onSubmit={handleCreateChild}>
         <input

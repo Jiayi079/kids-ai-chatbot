@@ -33,7 +33,6 @@ body, html, #root {
   letter-spacing: 2px;
   background: transparent;
   user-select: none;
-  pointer-events: none;
 }
 
 /* Welcome Page */

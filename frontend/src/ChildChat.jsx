@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './App.css';
 
 export default function ChildChat({ token, child }) {
+  const navigate = useNavigate();
   const [currentView, setCurrentView] = useState('welcome');
   const [selectedTopic, setSelectedTopic] = useState('');
   const [chatSessions, setChatSessions] = useState([]);
@@ -250,10 +252,33 @@ export default function ChildChat({ token, child }) {
     setError('');
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    navigate('/login');
+  };
+
   if (currentView === 'welcome') {
     return (
       <div className="ipad-app-bg welcome-bg">
-        <div className="app-header-fixed">Kids AI Chat</div>
+        <div className="app-header-fixed">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 20px' }}>
+            <span>Kids AI Chat</span>
+            <button 
+              onClick={handleLogout}
+              style={{
+                padding: '6px 12px',
+                backgroundColor: '#ff6b6b',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
+            >
+              Logout
+            </button>
+          </div>
+        </div>
         <div className="welcome-center">
           <h1 className="welcome-title">Hello {child.name}! 👋</h1>
           <p style={{ fontSize: '1.2rem', color: '#666', marginBottom: '32px', textAlign: 'center' }}>
@@ -303,7 +328,25 @@ export default function ChildChat({ token, child }) {
 
   return (
     <div className="ipad-app-bg">
-      <div className="app-header-fixed">Kids AI Chat</div>
+      <div className="app-header-fixed">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 20px' }}>
+          <span>Kids AI Chat</span>
+          <button 
+            onClick={handleLogout}
+            style={{
+              padding: '6px 12px',
+              backgroundColor: '#ff6b6b',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '12px'
+            }}
+          >
+            Logout
+          </button>
+        </div>
+      </div>
       
       <div className="chat-layout">
         <div className="chat-main-row">
