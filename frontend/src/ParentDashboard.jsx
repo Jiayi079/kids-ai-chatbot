@@ -12,6 +12,7 @@ export default function ParentDashboard({ token }) {
   const [childCreateMsg, setChildCreateMsg] = useState('');
   const [expandedSessionId, setExpandedSessionId] = useState(null);
   const [sessionMessages, setSessionMessages] = useState({});
+  const [childUsageData, setChildUsageData] = useState({});
   const API_URL = import.meta.env.VITE_API_URL;
 
   useEffect(() => {
@@ -19,8 +20,33 @@ export default function ParentDashboard({ token }) {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => res.json())
-      .then(data => setChildren(data.children || []));
+      .then(data => {
+        setChildren(data.children || []);
+        // Fetch usage data for all children
+        if (data.children && data.children.length > 0) {
+          data.children.forEach(child => {
+            fetchChildUsage(child.id);
+          });
+        }
+      });
   }, [token]);
+
+  const fetchChildUsage = async (childId) => {
+    try {
+      const res = await fetch(`${API_URL}/children/${childId}/usage`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const usageData = await res.json();
+        setChildUsageData(prev => ({
+          ...prev,
+          [childId]: usageData
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to fetch child usage:', err);
+    }
+  };
 
   useEffect(() => {
     if (selectedChild) {
@@ -54,6 +80,8 @@ export default function ParentDashboard({ token }) {
     if (res.ok) {
       setMessage('Usage limit updated!');
       setSelectedChild({ ...selectedChild, daily_limit_minutes: usageLimit });
+      // refresh usage data to update percentage calculation
+      await fetchChildUsage(selectedChild.id);
     } else {
       setMessage('Failed to update usage limit.');
     }
@@ -158,7 +186,16 @@ export default function ParentDashboard({ token }) {
                 >
                   <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>{child.name} <span style={{ color: '#888', fontWeight: 400 }}>(age {child.age})</span></div>
                   <div style={{ fontSize: '0.85rem', color: '#666', marginTop: 3 }}>
-                    Usage: <span style={{ fontWeight: 600 }}>Coming soon</span>
+                    Usage: <span style={{ fontWeight: 600 }}>{childUsageData[child.id]?.todayUsage || 0} min</span>
+                    {childUsageData[child.id]?.usagePercentage !== undefined && (
+                      <span style={{ 
+                        color: childUsageData[child.id]?.usagePercentage > 80 ? '#e57373' : 
+                               childUsageData[child.id]?.usagePercentage > 60 ? '#ff9800' : '#2d3a4a', 
+                        marginLeft: 4, fontSize: '0.8rem' 
+                      }}>
+                        ({childUsageData[child.id]?.usagePercentage}%)
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: '0.85rem', color: '#666', marginTop: 2 }}>
                     Limit: <span style={{ fontWeight: 600 }}>{child.daily_limit_minutes} min/day</span>
@@ -177,7 +214,12 @@ export default function ParentDashboard({ token }) {
                 <span style={{ fontSize: '1.4rem' }}>👦</span> {selectedChild.name} (age {selectedChild.age})
               </span>
               <div style={{ fontSize: '1rem', color: '#666', marginBottom: 8 }}>
-                Usage today: <span style={{ fontWeight: 600 }}>Coming soon</span>
+                Usage today: <span style={{ fontWeight: 600 }}>{childUsageData[selectedChild.id]?.todayUsage || 0} min</span>
+                {childUsageData[selectedChild.id]?.usagePercentage !== undefined && (
+                  <span style={{ color: childUsageData[selectedChild.id]?.usagePercentage > 80 ? '#e57373' : '#2d3a4a', marginLeft: 8 }}>
+                    ({childUsageData[selectedChild.id]?.usagePercentage}% of daily limit)
+                  </span>
+                )}
               </div>
               <div style={{ fontSize: '1rem', color: '#666', marginBottom: 16 }}>
                 Usage limit: <span style={{ fontWeight: 600 }}>{selectedChild.daily_limit_minutes} min/day</span>
@@ -195,6 +237,12 @@ export default function ParentDashboard({ token }) {
                 </label>
                 <button type="submit" style={{ fontSize: '0.95rem', padding: '8px 14px', borderRadius: 6, background: 'linear-gradient(90deg, #b6e0fe 0%, #e3f0ff 100%)', color: '#2d3a4a', fontWeight: 'bold', border: 'none', boxShadow: '0 2px 8px #e3e3e3' }}>Update Limit</button>
               </form>
+              <button 
+                onClick={() => selectedChild && fetchChildUsage(selectedChild.id)}
+                style={{ fontSize: '0.9rem', padding: '6px 12px', borderRadius: 6, background: 'linear-gradient(90deg, #fffbe7 0%, #ffe9b2 100%)', color: '#2d3a4a', fontWeight: 'bold', border: 'none', boxShadow: '0 2px 8px #e3e3e3', marginBottom: 16 }}
+              >
+                🔄 Refresh Usage
+              </button>
               {message && <div style={{ color: message.includes('updated') ? '#2d3a4a' : '#e57373', marginBottom: 12 }}>{message}</div>}
               {/* <div style={{ width: '100%' }}>
                 <h4 style={{ color: '#2d3a4a', fontWeight: 700, marginBottom: 10 }}>Chat Sessions</h4>

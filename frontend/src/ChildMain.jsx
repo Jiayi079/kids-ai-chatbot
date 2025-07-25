@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-export default function ChildMain({ token, child }) {
+export default function ChildMain({ token, child, user }) {
   const navigate = useNavigate();
   const [chatSessions, setChatSessions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -20,7 +20,26 @@ export default function ChildMain({ token, child }) {
 
   useEffect(() => {
     fetchChatSessions();
-  }, []);
+    
+    // Add beforeunload event listener to track usage if child closes browser
+    const handleBeforeUnload = async () => {
+      try {
+        // Use sendBeacon for reliable data sending during page unload
+        const data = JSON.stringify({ 
+          childId: child.id
+        });
+        navigator.sendBeacon(`${API_URL}/child-usage-track`, data);
+      } catch (err) {
+        console.error('Failed to track usage on page unload:', err);
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [child]);
 
   const fetchChatSessions = async () => {
     try {
@@ -65,7 +84,33 @@ export default function ChildMain({ token, child }) {
     navigate(`/child-chat/${session.id}`);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    console.log('ChildMain logout called');
+    console.log('Child data:', child);
+    
+    // Track usage before logout
+    try {
+      console.log('Sending logout request to backend...');
+      const response = await fetch(`${API_URL}/child-logout`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      const result = await response.json();
+      console.log('Logout response:', result);
+      
+      if (response.ok) {
+        console.log('Usage tracking successful');
+      } else {
+        console.error('Usage tracking failed:', result.error);
+      }
+    } catch (err) {
+      console.error('Failed to track logout usage:', err);
+    }
+    
     localStorage.removeItem('user');
     navigate('/login');
   };

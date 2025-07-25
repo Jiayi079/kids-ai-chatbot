@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-export default function ChildChat({ token, child }) {
+export default function ChildChat({ token, child, user }) {
   const navigate = useNavigate();
   const { sessionId } = useParams();
   const [selectedTopic, setSelectedTopic] = useState('');
@@ -21,7 +21,26 @@ export default function ChildChat({ token, child }) {
     if (sessionId) {
       fetchSessionAndMessages(sessionId);
     }
-  }, [sessionId]);
+    
+    // Add beforeunload event listener to track usage if child closes browser
+    const handleBeforeUnload = async () => {
+      try {
+        // Use sendBeacon for reliable data sending during page unload
+        const data = JSON.stringify({ 
+          childId: child.id
+        });
+        navigator.sendBeacon(`${API_URL}/child-usage-track`, data);
+      } catch (err) {
+        console.error('Failed to track usage on page unload:', err);
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [sessionId, child]);
 
   useEffect(() => {
     if (chatEndRef.current) {
@@ -140,7 +159,36 @@ export default function ChildChat({ token, child }) {
 
   const handleButtonClick = (buttonText) => setInputMessage(buttonText);
   const handleKeyPress = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
-  const handleLogout = () => { localStorage.removeItem('user'); navigate('/login'); };
+  const handleLogout = async () => { 
+    console.log('ChildChat logout called');
+    console.log('Child data:', child);
+    
+    // track usage before logout
+    try {
+      console.log('Sending logout request to backend...');
+      const response = await fetch(`${API_URL}/child-logout`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      const result = await response.json();
+      console.log('Logout response:', result);
+      
+      if (response.ok) {
+        console.log('Usage tracking successful');
+      } else {
+        console.error('Usage tracking failed:', result.error);
+      }
+    } catch (err) {
+      console.error('Failed to track logout usage:', err);
+    }
+    
+    localStorage.removeItem('user'); 
+    navigate('/login'); 
+  };
   const goBackToMain = () => { navigate('/child-main'); };
 
   return (

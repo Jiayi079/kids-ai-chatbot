@@ -29,13 +29,30 @@ export default function Login({ onLogin }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Login failed');
+      
+      // for child login, track usage start
+      if (mode === 'child') {
+        // call usage tracking endpoint (to track usage start)
+        try {
+          await fetch(`${API_URL}/child-login-start`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${data.token}`
+            }
+          });
+        } catch (err) {
+          console.error('Failed to start usage tracking:', err);
+        }
+      }
+      
       // save to localStorage for persistent login
       localStorage.setItem('user', JSON.stringify(data));
       onLogin(data, mode);
       if (mode === 'parent') {
         navigate('/parent-dashboard');
       } else {
-        navigate('/child-chat');
+        navigate('/child-main');
       }
     } catch (err) {
       setError(err.message);

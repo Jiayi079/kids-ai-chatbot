@@ -40,13 +40,18 @@ CREATE TABLE chat_messages (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
--- 5. Usage logs
+-- 5. Usage logs (event-based tracking)
 CREATE TABLE usage_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   child_id UUID REFERENCES children(id) ON DELETE CASCADE,
-  date DATE,
-  total_minutes INTEGER,
-  sessions_count INTEGER,
-  messages_count INTEGER,
+  event_type VARCHAR(10) CHECK (event_type IN ('login', 'logout')),
+  event_time TIMESTAMP DEFAULT NOW(),
+  date DATE GENERATED ALWAYS AS (event_time::date) STORED,
+  session_id UUID, -- Optional: link to specific chat session
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Indexes for efficient queries
+CREATE INDEX idx_usage_logs_child_date ON usage_logs(child_id, date);
+CREATE INDEX idx_usage_logs_event_type ON usage_logs(event_type);
+CREATE INDEX idx_usage_logs_event_time ON usage_logs(event_time);

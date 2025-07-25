@@ -423,6 +423,160 @@ function requireChildJWT(req, res, next) {
     next();
 }
 
+// track child login time
+app.post('/api/child-login-start', authenticateToken, requireChildJWT, async (req, res) => {
+  try {
+    const childId = req.user.id;
+    
+    // record login event
+    const loginEvent = await pool.query(
+      'INSERT INTO usage_logs (child_id, event_type, event_time) VALUES ($1, $2, $3) RETURNING *',
+      [childId, 'login', new Date()]
+    );
+    
+    console.log(`Child ${childId} login event recorded: ${loginEvent.rows[0].id}`);
+    res.json({ success: true, message: 'Login event recorded', eventId: loginEvent.rows[0].id });
+  } catch (err) {
+    console.error('Login event recording error:', err);
+    res.status(500).json({ error: 'Failed to record login event.' });
+  }
+});
+
+// track child logout and calculate usage
+app.post('/api/child-logout', authenticateToken, requireChildJWT, async (req, res) => {
+  try {
+    const childId = req.user.id;
+    
+    // record logout event
+    const logoutEvent = await pool.query(
+      'INSERT INTO usage_logs (child_id, event_type, event_time) VALUES ($1, $2, $3) RETURNING *',
+      [childId, 'logout', new Date()]
+    );
+    
+    console.log(`Child ${childId} logout event recorded: ${logoutEvent.rows[0].id}`);
+    res.json({ success: true, message: 'Logout event recorded', eventId: logoutEvent.rows[0].id });
+  } catch (err) {
+    console.error('Logout event recording error:', err);
+    res.status(500).json({ error: 'Failed to record logout event.' });
+  }
+});
+
+// track child usage time
+app.post('/api/child-usage-track', async (req, res) => {
+  try {
+    const { childId } = req.body;
+    
+    if (!childId) {
+      return res.status(400).json({ error: 'Child ID is required.' });
+    }
+    
+    // record logout event for page unload
+    const logoutEvent = await pool.query(
+      'INSERT INTO usage_logs (child_id, event_type, event_time) VALUES ($1, $2, $3) RETURNING *',
+      [childId, 'logout', new Date()]
+    );
+    
+    console.log(`Child ${childId} page unload logout event recorded: ${logoutEvent.rows[0].id}`);
+    res.json({ success: true, message: 'Page unload logout event recorded' });
+  } catch (err) {
+    console.error('Page unload usage tracking error:', err);
+    res.status(500).json({ error: 'Failed to track page unload usage.' });
+  }
+});
+
+// get usage data for parent dashboard (calculated from usage_logs events)
+app.get('/api/children/:child_id/usage', authenticateToken, async (req, res) => {
+  try {
+    const { child_id } = req.params;
+    
+    // verify parent has access to this child (only parent can see usage data)
+    if (req.user.type === 'parent') {
+      const childCheck = await pool.query('SELECT id FROM children WHERE id = $1 AND parent_id = $2', [child_id, req.user.id]);
+      if (childCheck.rows.length === 0) {
+        return res.status(403).json({ error: 'Access denied.' });
+      }
+    } else if (req.user.type === 'child') {
+      if (req.user.id !== child_id) {
+        return res.status(403).json({ error: 'Access denied.' });
+      }
+    } else {
+      return res.status(403).json({ error: 'Invalid token.' });
+    }
+    
+    const today = new Date().toISOString().split('T')[0];
+    
+    // get all session events for today
+    const eventsResult = await pool.query(
+      `SELECT event_type, event_time 
+       FROM usage_logs 
+       WHERE child_id = $1 
+       AND date = $2 
+       ORDER BY event_time ASC`,
+      [child_id, today]
+    );
+    
+    // calculate total usage from login/logout pairs
+    let totalMinutes = 0;
+    let loginTime = null;
+    const sessions = [];
+    
+    for (const event of eventsResult.rows) {
+      if (event.event_type === 'login') {
+        loginTime = new Date(event.event_time);
+      } else if (event.event_type === 'logout' && loginTime) {
+        const logoutTime = new Date(event.event_time);
+        const sessionMinutes = Math.ceil((logoutTime - loginTime) / (1000 * 60));
+        totalMinutes += Math.max(0, sessionMinutes);
+        
+        sessions.push({
+          login: loginTime,
+          logout: logoutTime,
+          minutes: sessionMinutes
+        });
+        
+        loginTime = null; // reset for next session
+      }
+    }
+    
+    // if there's an unclosed session (login without logout), calculate until now
+    if (loginTime) {
+      const now = new Date();
+      const sessionMinutes = Math.ceil((now - loginTime) / (1000 * 60));
+      totalMinutes += Math.max(0, sessionMinutes);
+      
+      sessions.push({
+        login: loginTime,
+        logout: now,
+        minutes: sessionMinutes,
+        active: true
+      });
+    }
+    
+    // get child's daily limit
+    const childResult = await pool.query(
+      'SELECT daily_limit_minutes FROM children WHERE id = $1',
+      [child_id]
+    );
+    
+    const dailyLimit = childResult.rows[0] ? childResult.rows[0].daily_limit_minutes : 60;
+    const usagePercentage = dailyLimit > 0 ? Math.round((totalMinutes / dailyLimit) * 100) : 0;
+    
+    console.log(`Usage calculation for child ${child_id}: ${totalMinutes} minutes from ${sessions.length} sessions`);
+    
+    res.json({
+      todayUsage: totalMinutes,
+      dailyLimit,
+      usagePercentage,
+      sessionsCount: sessions.length,
+      sessions: sessions,
+      eventsCount: eventsResult.rows.length
+    });
+  } catch (err) {
+    console.error('Get usage error:', err);
+    res.status(500).json({ error: 'Failed to fetch usage data.' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Backend server running at http://localhost:${PORT}`);
 });

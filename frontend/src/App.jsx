@@ -34,8 +34,8 @@ function App() {
           }
         }} />} />
         <Route path="/parent-dashboard" element={user && user.token && user.user ? <ParentDashboard token={user.token} /> : <Navigate to="/login" />} />
-        <Route path="/child-main" element={user && user.token && user.child ? <ChildMain token={user.token} child={user.child} /> : <Navigate to="/login" />} />
-        <Route path="/child-chat/:sessionId" element={user && user.token && user.child ? <ChildChat token={user.token} child={user.child} /> : <Navigate to="/login" />} />
+        <Route path="/child-main" element={user && user.token && user.child ? <ChildMain token={user.token} child={user.child} user={user} /> : <Navigate to="/login" />} />
+        <Route path="/child-chat/:sessionId" element={user && user.token && user.child ? <ChildChat token={user.token} child={user.child} user={user} /> : <Navigate to="/login" />} />
         <Route path="*" element={<Navigate to="/login" />} />
       </Routes>
     </Router>
