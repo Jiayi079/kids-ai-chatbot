@@ -29,6 +29,10 @@ export default function Login({ onLogin }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Login failed');
+      
+      // save to localStorage for persistent login
+      localStorage.setItem('user', JSON.stringify(data));
+      
       onLogin(data, mode);
       if (mode === 'parent') {
         navigate('/parent-dashboard');

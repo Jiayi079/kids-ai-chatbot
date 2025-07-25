@@ -20,8 +20,9 @@ export default function ParentRegister({ onRegister }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Registration failed');
-      onRegister(data.user);
-      navigate('/parent-dashboard');
+      
+      // registration successful --> redirect to login
+      navigate('/login');
     } catch (err) {
       setError(err.message);
     }
