@@ -1,34 +1,35 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import './App.css';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 
 export default function ChildChat({ token, child }) {
   const navigate = useNavigate();
-  const [currentView, setCurrentView] = useState('welcome');
+  const { sessionId } = useParams();
   const [selectedTopic, setSelectedTopic] = useState('');
-  const [chatSessions, setChatSessions] = useState([]);
-  const [currentSession, setCurrentSession] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [chatSessions, setChatSessions] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [hoveredSession, setHoveredSession] = useState(null);
+  const chatEndRef = useRef(null);
 
   const API_URL = import.meta.env.VITE_API_URL;
 
-  // Fun topics for kids
-  const topics = [
-    'Math Fun', 'Science Stories', 'Animal Friends', 
-    'Space Adventure', 'Ocean World', 'Dinosaur Time',
-    'Magic Stories', 'Art & Colors', 'Music & Songs',
-    'Nature Explorer', 'Robot Friends', 'Fairy Tales'
-  ];
-
-  // Fetch chat sessions when component mounts
+  // fetch all chat sessions and the current session/messages on mount or sessionId change
   useEffect(() => {
-    fetchChatSessions();
-  }, []);
+    fetchAllSessions();
+    if (sessionId) {
+      fetchSessionAndMessages(sessionId);
+    }
+  }, [sessionId]);
 
-  const fetchChatSessions = async () => {
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
+
+  const fetchAllSessions = async () => {
     try {
       const response = await fetch(`${API_URL}/chat-session/${child.id}`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -36,82 +37,79 @@ export default function ChildChat({ token, child }) {
       const data = await response.json();
       if (response.ok) {
         setChatSessions(data.sessions || []);
-      } else {
-        setError('Failed to load chat history');
       }
     } catch (err) {
-      setError('Failed to load chat history');
+      // ignore error for sidebar
     }
   };
 
-  const startNewChat = async (topic) => {
+  const fetchSessionAndMessages = async (sessionId) => {
     setIsLoading(true);
-    setError('');
-    
     try {
-      const response = await fetch(`${API_URL}/chat-session`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          child_id: child.id,
-          topic: topic
-        })
+      // fetch session info (topics)
+      const sessionRes = await fetch(`${API_URL}/chat-session/${child.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
-      
-      const data = await response.json();
+      const sessionData = await sessionRes.json();
+      if (sessionRes.ok && sessionData.sessions) {
+        const session = sessionData.sessions.find(s => s.id === sessionId);
+        if (session) setSelectedTopic(session.topic);
+      }
+      // fetch messages
+      const response = await fetch(`${API_URL}/chat-message/${sessionId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       if (response.ok) {
-        setCurrentSession(data.session);
-        setSelectedTopic(topic);
-        setCurrentView('chat');
-        setMessages([]);
-        setChatSessions(prev => [data.session, ...prev]);
+        const data = await response.json();
+        const formattedMessages = data.messages.map(msg => {
+          let buttons = [];
+          if (msg.buttons_offered) {
+            if (Array.isArray(msg.buttons_offered)) {
+              buttons = msg.buttons_offered;
+            } else if (typeof msg.buttons_offered === 'string') {
+              try { buttons = JSON.parse(msg.buttons_offered); } catch { buttons = []; }
+            }
+          }
+          return {
+            id: msg.id,
+            content: msg.message_text,
+            sender: msg.from_type,
+            buttons,
+            timestamp: msg.created_at
+          };
+        });
+        setMessages(formattedMessages);
       } else {
-        setError('Failed to start new chat');
+        setMessages([]);
       }
     } catch (err) {
-      setError('Failed to start new chat');
+      setError('Failed to load chat session');
+      setMessages([]);
     } finally {
       setIsLoading(false);
     }
   };
 
   const sendMessage = async () => {
-    if (!inputMessage.trim() || !currentSession) return;
-    
+    if (!inputMessage.trim() || !sessionId) return;
     const userMessage = inputMessage.trim();
     setInputMessage('');
     setIsLoading(true);
-    
-    // add user message to chat
     const newUserMessage = {
       id: Date.now(),
       content: userMessage,
-      sender: 'user',
+      sender: 'kid',
       timestamp: new Date().toISOString()
     };
     setMessages(prev => [...prev, newUserMessage]);
-
     try {
-      // send to AI and get response
       const aiResponse = await fetch(`${API_URL}/chat`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          message: userMessage,
-          topic: selectedTopic
-        })
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ message: userMessage, topic: selectedTopic })
       });
-
       const aiData = await aiResponse.json();
-      
       if (aiResponse.ok) {
-        // Add AI response to chat
         const newAiMessage = {
           id: Date.now() + 1,
           content: aiData.response,
@@ -120,35 +118,15 @@ export default function ChildChat({ token, child }) {
           timestamp: new Date().toISOString()
         };
         setMessages(prev => [...prev, newAiMessage]);
-
-        // store user message to db
         await fetch(`${API_URL}/chat-message`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            session_id: currentSession.id,
-            from_type: 'kid',
-            message_text: userMessage,
-            buttons_offered: null
-          })
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ session_id: sessionId, from_type: 'kid', message_text: userMessage, buttons_offered: null })
         });
-
-        // store AI response message to db
         await fetch(`${API_URL}/chat-message`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            session_id: currentSession.id,
-            from_type: 'ai',
-            message_text: aiData.response,
-            buttons_offered: aiData.buttons || null
-          })
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ session_id: sessionId, from_type: 'ai', message_text: aiData.response, buttons_offered: aiData.buttons || null })
         });
       } else {
         setError('Failed to get AI response');
@@ -160,297 +138,155 @@ export default function ChildChat({ token, child }) {
     }
   };
 
-  const handleButtonClick = (buttonText) => {
-    setInputMessage(buttonText);
-  };
-
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
-
-  const loadChatSession = async (session) => {
-    setCurrentSession(session);
-    setSelectedTopic(session.topic);
-    setCurrentView('chat');
-    setMessages([]);
-    setIsLoading(true);
-    
-    try {
-      // get messages for this session
-      const response = await fetch(`${API_URL}/chat-message/${session.id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      console.log('Response status:', response.status);
-      console.log('Response ok:', response.ok);
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Received data:', data);
-        const formattedMessages = data.messages.map(msg => {
-          // handle buttons_offered - it could be an array, JSON string, or null
-          let buttons = [];
-          if (msg.buttons_offered) {
-            if (Array.isArray(msg.buttons_offered)) {
-              buttons = msg.buttons_offered;
-            } else if (typeof msg.buttons_offered === 'string') {
-              try {
-                buttons = JSON.parse(msg.buttons_offered);
-              } catch (e) {
-                console.error('Failed to parse buttons_offered:', e);
-                buttons = [];
-              }
-            }
-          }
-          
-          return {
-            id: msg.id,
-            content: msg.message_text,
-            sender: msg.from_type,
-            buttons: buttons,
-            timestamp: msg.created_at
-          };
-        });
-        console.log('Formatted messages:', formattedMessages);
-        setMessages(formattedMessages);
-      } else {
-        // if no messages found, show welcome message
-        setMessages([
-          {
-            id: 1,
-            content: `Welcome to our ${session.topic} chat! Let's have fun learning together!`,
-            sender: 'ai',
-            timestamp: session.started_at
-          }
-        ]);
-      }
-    } catch (err) {
-      setError('Failed to load chat session');
-      // Show welcome message as fallback
-      setMessages([
-        {
-          id: 1,
-          content: `Welcome to our ${session.topic} chat! Let's have fun learning together!`,
-          sender: 'ai',
-          timestamp: session.started_at
-        }
-      ]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const goBackToWelcome = () => {
-    setCurrentView('welcome');
-    setCurrentSession(null);
-    setSelectedTopic('');
-    setMessages([]);
-    setInputMessage('');
-    setError('');
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    navigate('/login');
-  };
-
-  if (currentView === 'welcome') {
-    return (
-      <div className="ipad-app-bg welcome-bg">
-        <div className="app-header-fixed">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 20px' }}>
-            <span>Kids AI Chat</span>
-            <button 
-              onClick={handleLogout}
-              style={{
-                padding: '6px 12px',
-                backgroundColor: '#ff6b6b',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '12px'
-              }}
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-        <div className="welcome-center">
-          <h1 className="welcome-title">Hello {child.name}! 👋</h1>
-          <p style={{ fontSize: '1.2rem', color: '#666', marginBottom: '32px', textAlign: 'center' }}>
-            What would you like to learn about today?
-          </p>
-          <div className="welcome-topics">
-            {topics.map((topic, index) => (
-              <button
-                key={index}
-                className="topic-btn big"
-                onClick={() => startNewChat(topic)}
-                disabled={isLoading}
-              >
-                {topic}
-              </button>
-            ))}
-          </div>
-          {chatSessions.length > 0 && (
-            <div style={{ marginTop: '32px', textAlign: 'center' }}>
-              <h3 style={{ color: '#ff7eb9', marginBottom: '16px' }}>Recent Chats</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
-                {chatSessions.slice(0, 3).map((session) => (
-                  <button
-                    key={session.id}
-                    onClick={() => loadChatSession(session)}
-                    style={{
-                      padding: '8px 16px',
-                      border: 'none',
-                      borderRadius: '12px',
-                      background: '#fff',
-                      color: '#333',
-                      cursor: 'pointer',
-                      fontSize: '0.9rem'
-                    }}
-                  >
-                    {session.topic} - {new Date(session.started_at).toLocaleDateString()}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {error && <div style={{ color: 'red', marginTop: '16px' }}>{error}</div>}
-        </div>
-      </div>
-    );
-  }
+  const handleButtonClick = (buttonText) => setInputMessage(buttonText);
+  const handleKeyPress = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
+  const handleLogout = () => { localStorage.removeItem('user'); navigate('/login'); };
+  const goBackToMain = () => { navigate('/child-main'); };
 
   return (
-    <div className="ipad-app-bg">
-      <div className="app-header-fixed">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 20px' }}>
-          <span>Kids AI Chat</span>
-          <button 
-            onClick={handleLogout}
-            style={{
-              padding: '6px 12px',
-              backgroundColor: '#ff6b6b',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '12px'
-            }}
-          >
-            Logout
-          </button>
+    <div style={{ minHeight: '100vh', height: '100vh', background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
+      {/* Brand/logo bar */}
+      <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '24px 40px 0 40px', boxSizing: 'border-box', flex: '0 0 auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: '2.1rem', fontWeight: 800, color: '#2d3a4a', letterSpacing: 1, display: 'flex', alignItems: 'center' }}>
+            <span style={{ fontSize: '2.2rem', marginRight: 8 }}></span> Kids AI Chat
+          </span>
         </div>
+        <button 
+          onClick={handleLogout}
+          style={{
+            padding: '8px 18px',
+            backgroundColor: '#e57373',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontSize: '1rem',
+            fontWeight: 'bold',
+            boxShadow: '0 2px 8px #e3e3e3',
+          }}
+        >
+          Logout
+        </button>
       </div>
-      
-      <div className="chat-layout">
-        <div className="chat-main-row">
-          {/* Sidebar */}
-          <div className="chat-sidebar">
-            <div className="sidebar-title">Chat History</div>
-            <button className="sidebar-back-btn" onClick={goBackToWelcome}>
-              ← Back to Topics
-            </button>
+      {/* main chat layout */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', height: 'calc(100vh - 80px)' }}>
+        {/* side bar layout */}
+        <div style={{ width: 260, background: '#f4f7fa', borderRight: '1.5px solid #e3e3e3', boxShadow: '2px 0 8px #e3e3e3', display: 'flex', flexDirection: 'column', alignItems: 'stretch', padding: '0 0 0 0', minWidth: 140, maxWidth: 320 }}>
+          <div style={{ fontSize: '1.3rem', color: '#2d3a4a', fontWeight: 'bold', textAlign: 'center', margin: '32px 0 18px 0' }}>Chat History</div>
+          <button onClick={goBackToMain} style={{ margin: '0 18px 18px 18px', padding: '14px 0', borderRadius: 14, background: 'linear-gradient(90deg, #fffbe7 0%, #ffe9b2 100%)', color: '#2d3a4a', fontSize: '1.1rem', fontWeight: 'bold', border: 'none', cursor: 'pointer', boxShadow: '0 2px 8px #e3e3e3', transition: 'background 0.2s', marginBottom: 24 }}>← Back to Topics</button>
+          <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 24 }}>
             {chatSessions.length === 0 ? (
-              <div className="sidebar-empty">No previous chats</div>
+              <div style={{ color: '#b0b0b0', textAlign: 'center', margin: '24px 0' }}>No previous chats</div>
             ) : (
-              chatSessions.map((session) => (
+              chatSessions.map((session, idx) => (
                 <div
                   key={session.id}
-                  className={`sidebar-chat-item ${currentSession?.id === session.id ? 'active' : ''}`}
-                  onClick={() => loadChatSession(session)}
+                  onClick={() => navigate(`/child-chat/${session.id}`)}
+                  onMouseEnter={() => setHoveredSession(idx)}
+                  onMouseLeave={() => setHoveredSession(null)}
+                  style={{
+                    fontSize: '1.1rem',
+                    padding: '16px',
+                    margin: '0 12px 12px 12px',
+                    borderRadius: 16,
+                    background: session.id === sessionId
+                      ? 'linear-gradient(90deg, #e3f0ff 0%, #b6e0fe 100%)'
+                      : hoveredSession === idx
+                        ? 'linear-gradient(90deg, #ffe066 0%, #fffbe7 100%)'
+                        : '#fff',
+                    color: '#2d3a4a',
+                    cursor: 'pointer',
+                    fontWeight: session.id === sessionId ? 700 : 500,
+                    border: session.id === sessionId ? '2px solid #b6e0fe' : '1.5px solid #e3e3e3',
+                    boxShadow: '0 2px 8px #e3e3e3',
+                    transition: 'background 0.2s, border 0.2s',
+                  }}
                 >
                   <div style={{ fontWeight: 'bold' }}>{session.topic}</div>
-                  <div style={{ fontSize: '0.8rem', color: '#666' }}>
-                    {new Date(session.started_at).toLocaleDateString()}
-                  </div>
+                  <div style={{ fontSize: '0.9rem', color: '#666' }}>{new Date(session.started_at).toLocaleDateString()}</div>
                 </div>
               ))
             )}
           </div>
-
-          {/* Main Chat Area */}
-          <div className="chat-main-area">
-            <div className="chat-topic-title">
-              {selectedTopic}
-            </div>
-            
-            <div className="chat-area-scroll">
-              <div className="chat-area-chat">
-                {messages.map((message) => (
-                  <div key={message.id} className="msg-container">
-                    <div className={`msg ${message.sender === 'kid' ? 'msg-kid-right' : 'msg-ai-left'}`}>
-                      {message.content}
-                      {message.buttons && message.buttons.length > 0 && (
-                        <div className="msg-buttons">
-                          {message.buttons.map((button, index) => (
-                            <button
-                              key={index}
-                              className="msg-btn"
-                              onClick={() => handleButtonClick(button)}
-                            >
-                              {button}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+        </div>
+        {/* main chat area */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 0, boxShadow: 'none', border: 'none', minWidth: 0, position: 'relative', height: '100%' }}>
+          <div style={{ fontSize: '1.7rem', color: '#2d3a4a', fontWeight: 700, textAlign: 'center', margin: '32px 0 0 0', minHeight: 48 }}>{selectedTopic}</div>
+          {/* message page */}
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '24px 0 12px 0', margin: '0 0 0 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {messages.map((message) => (
+              <div key={message.id} style={{ display: 'flex', justifyContent: message.sender === 'kid' ? 'flex-end' : 'flex-start' }}>
+                <div style={{
+                  background: message.sender === 'kid'
+                    ? 'linear-gradient(90deg, #e3f0ff 0%, #b6e0fe 100%)'
+                    : 'linear-gradient(90deg, #fffbe7 0%, #ffe9b2 100%)',
+                  color: '#2d3a4a',
+                  border: message.sender === 'kid' ? '1.5px solid #b6e0fe' : '1.5px solid #ffe9b2',
+                  boxShadow: '0 2px 8px #e3e3e3',
+                  borderRadius: message.sender === 'kid' ? '22px 22px 6px 22px' : '22px 22px 22px 6px',
+                  padding: '16px 24px',
+                  marginBottom: 12,
+                  maxWidth: '70%',
+                  fontSize: '1.15rem',
+                  textAlign: message.sender === 'kid' ? 'right' : 'left',
+                  alignSelf: message.sender === 'kid' ? 'flex-end' : 'flex-start',
+                  wordBreak: 'break-word',
+                }}>
+                  {message.content}
+                  {message.buttons && message.buttons.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start', marginTop: 10 }}>
+                      {message.buttons.map((button, index) => (
+                        <button
+                          key={index}
+                          style={{
+                            background: 'linear-gradient(90deg, #fffbe7 0%, #ffe9b2 100%)',
+                            color: '#2d3a4a',
+                            border: '1.5px solid #ffe9b2',
+                            fontWeight: 'bold',
+                            borderRadius: 12,
+                            boxShadow: '0 2px 8px #e3e3e3',
+                            fontSize: '1rem',
+                            padding: '10px 18px',
+                            marginTop: 4,
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => handleButtonClick(button)}
+                        >
+                          {button}
+                        </button>
+                      ))}
                     </div>
-                  </div>
-                ))}
-                {isLoading && (
-                  <div className="msg-container">
-                    <div className="msg msg-ai loading">
-                      Thinking...
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-
-            <div className="input-row-fixed chat-input-row">
-              <button className="mic-btn" disabled={isLoading}>
-                🎤
-              </button>
-              <input
-                className="chat-input"
-                type="text"
-                placeholder="Type your message..."
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                onKeyPress={handleKeyPress}
-                disabled={isLoading}
-              />
-              <button
-                className="send-btn"
-                onClick={sendMessage}
-                disabled={!inputMessage.trim() || isLoading}
-              >
-                Send
-              </button>
-            </div>
+            ))}
+            <div ref={chatEndRef} />
+          </div>
+          {/* user input area */}
+          <div style={{ flex: '0 0 auto', width: '100%', boxShadow: '0 -2px 12px #e3e3e3', background: '#f4f7fa', padding: '18px 18px 24px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button disabled={isLoading} style={{ fontSize: '2.2rem', background: '#e3f0ff', border: '2.5px solid #b6e0fe', borderRadius: '50%', width: 60, height: 60, cursor: 'pointer', transition: 'background 0.2s, transform 0.1s', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2d3a4a' }}>🎤</button>
+            <input
+              type="text"
+              placeholder="Type your message..."
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              onKeyPress={handleKeyPress}
+              disabled={isLoading}
+              style={{ flex: 1, fontSize: '1.2rem', padding: 16, borderRadius: 16, border: '1.5px solid #b6e0fe', outline: 'none', background: '#fff', minWidth: 0, color: '#2d3a4a' }}
+            />
+            <button
+              onClick={sendMessage}
+              disabled={!inputMessage.trim() || isLoading}
+              style={{ fontSize: '1.2rem', background: 'linear-gradient(90deg, #b6e0fe 0%, #e3f0ff 100%)', color: '#2d3a4a', border: 'none', borderRadius: 16, padding: '16px 28px', cursor: 'pointer', fontWeight: 'bold', transition: 'background 0.2s, transform 0.1s', minWidth: 80, boxShadow: '0 2px 8px #e3e3e3' }}
+            >
+              Send
+            </button>
           </div>
         </div>
       </div>
-      
       {error && (
-        <div style={{
-          position: 'fixed',
-          bottom: '20px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: '#ff4444',
-          color: 'white',
-          padding: '12px 24px',
-          borderRadius: '8px',
-          zIndex: 1000
-        }}>
-          {error}
-        </div>
+        <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', background: '#e57373', color: 'white', padding: '12px 24px', borderRadius: 8, zIndex: 1000, boxShadow: '0 2px 8px #e3e3e3' }}>{error}</div>
       )}
     </div>
   );
