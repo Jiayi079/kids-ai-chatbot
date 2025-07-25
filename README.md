@@ -11,7 +11,33 @@ A kid-friendly AI chatbot web app designed for children aged 6-12, featuring voi
 - Age-appropriate conversations make sure kids can understand and have fun
 
 ### For Parents
+- **Subscription Management**: Choose from Free, Basic, or Premium plans
+- **Child Account Management**: Create and manage multiple child accounts
+- **Usage Monitoring**: Track daily usage and set limits for each child
+- **Chat History**: Review all chat sessions and conversations
+- **Payment Processing**: Secure subscription payments with plan upgrades
 
+## Subscription Plans
+
+### Free Plan
+- 1 child account
+- 60 minutes daily usage limit
+- Basic features
+
+### Basic Plan ($9.99/month)
+- Up to 3 child accounts
+- 120 minutes daily usage limit per child
+- Priority support
+- Basic analytics
+
+### Premium Plan ($19.99/month)
+- Unlimited child accounts
+- Unlimited daily usage
+- Advanced analytics & reports
+- Custom learning topics
+- 24/7 priority support
+- Progress tracking
+- Educational content library
 
 ## Quick Start
 
@@ -55,14 +81,45 @@ A kid-friendly AI chatbot web app designed for children aged 6-12, featuring voi
 Create a `.env` file in the `backend` folder:
 
 ```env
+# Database Configuration
+PGHOST=localhost
+PGUSER=your_db_user
+PGPASSWORD=your_db_password
+PGDATABASE=your_db_name
+PGPORT=5432
+
+# JWT Secret
+JWT_SECRET=your_jwt_secret_key_here
+
+# Gemini API Key
 GEMINI_API_KEY=your_gemini_api_key_here
+
+# Stripe Configuration
+STRIPE_SECRET_KEY=sk_test_your_stripe_secret_key_here
+STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret_here
 ```
 
-### Getting a Gemini API Key
+Create a `.env` file in the `frontend` folder:
 
+```env
+VITE_API_URL=http://localhost:3001
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_publishable_key_here
+```
+
+### Getting API Keys
+
+#### Gemini API Key
 1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
 2. Create a new API key
-3. Add it to your `.env` file
+3. Add it to your backend `.env` file
+
+#### Stripe API Keys
+1. Go to [Stripe Dashboard](https://dashboard.stripe.com/)
+2. Create an account or sign in
+3. Go to Developers → API keys
+4. Copy your **Publishable key** (starts with `pk_test_`) to frontend `.env`
+5. Copy your **Secret key** (starts with `sk_test_`) to backend `.env`
+6. For webhooks (optional), go to Developers → Webhooks and create an endpoint
 
 ## 📱 Usage
 
@@ -75,10 +132,12 @@ GEMINI_API_KEY=your_gemini_api_key_here
 
 ## Tech Stack
 
-- **Frontend**: React + Vite
-- **Backend**: Node.js + Express
+- **Frontend**: React + Vite + Stripe Elements
+- **Backend**: Node.js + Express + Stripe API
 - **AI**: Google Gemini API
+- **Database**: PostgreSQL
 - **Styling**: CSS3 with responsive design
+- **Payments**: Stripe (secure payment processing)
 
 ## Project Structure
 

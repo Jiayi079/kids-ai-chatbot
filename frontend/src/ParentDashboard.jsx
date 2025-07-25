@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import PaymentSection from './PaymentSection';
 
 export default function ParentDashboard({ token }) {
   const navigate = useNavigate();
@@ -13,6 +14,7 @@ export default function ParentDashboard({ token }) {
   const [expandedSessionId, setExpandedSessionId] = useState(null);
   const [sessionMessages, setSessionMessages] = useState({});
   const [childUsageData, setChildUsageData] = useState({});
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const API_URL = import.meta.env.VITE_API_URL;
 
   useEffect(() => {
@@ -137,22 +139,44 @@ export default function ParentDashboard({ token }) {
       <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', boxSizing: 'border-box', flex: '0 0 auto', background: '#fff', borderBottom: '1px solid #e3e3e3' }}>
         <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#2d3a4a', letterSpacing: 1, display: 'flex', alignItems: 'center' }}>
           <span style={{ fontSize: '1.8rem', marginRight: 8 }}></span> Kids AI Chat </span>
-        <button 
-          onClick={handleLogout}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: '#e57373',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontSize: '0.9rem',
-            fontWeight: 'bold',
-            boxShadow: '0 2px 8px #e3e3e3',
-          }}
-        >
-          Logout
-        </button>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <button 
+            onClick={() => setShowPaymentModal(true)}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#4caf50',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+              fontWeight: 'bold',
+              boxShadow: '0 2px 8px #e3e3e3',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            <span style={{ fontSize: '1rem' }}>💳</span>
+            Subscription
+          </button>
+          <button 
+            onClick={handleLogout}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#e57373',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+              fontWeight: 'bold',
+              boxShadow: '0 2px 8px #e3e3e3',
+            }}
+          >
+            Logout
+          </button>
+        </div>
       </div>
       
       {/* Three-column dashboard layout */}
@@ -205,6 +229,7 @@ export default function ParentDashboard({ token }) {
             )}
           </div>
         </div>
+        
         {/* Center column: add child form and selected child details */}
         <div style={{ flex: 1, maxWidth: '400px', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
           {/* Selected child details */}
@@ -244,18 +269,9 @@ export default function ParentDashboard({ token }) {
                 🔄 Refresh Usage
               </button>
               {message && <div style={{ color: message.includes('updated') ? '#2d3a4a' : '#e57373', marginBottom: 12 }}>{message}</div>}
-              {/* <div style={{ width: '100%' }}>
-                <h4 style={{ color: '#2d3a4a', fontWeight: 700, marginBottom: 10 }}>Chat Sessions</h4>
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                  {sessions.map(session => (
-                    <li key={session.id} style={{ marginBottom: 8, fontSize: '1.05rem', color: '#2d3a4a', background: '#f4f7fa', borderRadius: 10, padding: '10px 14px', boxShadow: '0 1px 4px #e3e3e3' }}>
-                      <span style={{ fontWeight: 600 }}>{session.topic}</span> <span style={{ color: '#888', fontWeight: 400 }}>({new Date(session.started_at).toLocaleString()})</span> <span style={{ color: '#888', fontWeight: 400 }}>Messages: {session.total_messages}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div> */}
             </div>
           )}
+          
           {/* Add new child form */}
           <div style={{ width: '100%', background: '#fff', borderRadius: 16, boxShadow: '0 2px 8px #e3e3e3', padding: '24px', border: '1px solid #e3e3e3', overflow: 'auto' }}>
             <span style={{ fontSize: '1.5rem', color: '#2d3a4a', fontWeight: 800, marginBottom: 16, textAlign: 'center', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -293,7 +309,11 @@ export default function ParentDashboard({ token }) {
                 required
               />
               <div style={{ fontSize: '0.85rem', color: '#666', marginTop: 4, marginBottom: 8, lineHeight: 1.3 }}>
-                Set up the usage limitation per day - how many minutes your child can use the AI chat each day: 
+                Set daily usage limit (minutes):
+                <br />
+                <span style={{ fontSize: '0.8rem', color: '#888' }}>
+                  Free: 60 min • Basic: 120 min • Premium: Unlimited
+                </span>
               </div>
               <input
                 placeholder="Daily Limit (minutes)"
@@ -308,6 +328,7 @@ export default function ParentDashboard({ token }) {
             </form>
           </div>
         </div>
+        
         {/* Right column: selected child's chat sessions/history */}
         <div style={{ width: '500px', minWidth: '450px', background: '#fff', borderRadius: 16, boxShadow: '0 2px 8px #e3e3e3', padding: '24px', border: '1px solid #e3e3e3', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <span style={{ fontSize: '1.4rem', color: '#2d3a4a', fontWeight: 800, marginBottom: 16, textAlign: 'center', display: 'flex', alignItems: 'center', gap: 10, flex: '0 0 auto' }}>
@@ -368,6 +389,67 @@ export default function ParentDashboard({ token }) {
           </ul>
         </div>
       </div>
+
+      {/* Payment Modal Overlay */}
+      {showPaymentModal && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px'
+          }}
+          onClick={() => setShowPaymentModal(false)}
+        >
+          <div 
+            style={{
+              background: '#fff',
+              borderRadius: 20,
+              maxWidth: '800px',
+              width: '100%',
+              maxHeight: '90vh',
+              overflow: 'auto',
+              position: 'relative',
+              boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setShowPaymentModal(false)}
+              style={{
+                position: 'absolute',
+                top: 16,
+                right: 16,
+                background: '#f5f5f5',
+                border: 'none',
+                borderRadius: '50%',
+                width: 40,
+                height: 40,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1.2rem',
+                color: '#666',
+                zIndex: 10
+              }}
+            >
+              ✕
+            </button>
+            
+            {/* Payment Section */}
+            <PaymentSection token={token} onClose={() => setShowPaymentModal(false)} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

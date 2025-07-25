@@ -5,6 +5,7 @@ const pool = require('./db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const authenticateToken = require('./authMiddleware');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 const PORT = 3001;
@@ -131,7 +132,8 @@ app.post('/api/parent-login', async (req, res) => {
       user: {
         id: user.id,
         email: user.email,
-        username: user.username
+        username: user.username,
+        subscription_status: user.subscription_status
       }
     });
   } catch (err) {
@@ -283,18 +285,45 @@ app.post('/api/children', authenticateToken, async (req, res) => {
     if (!name || !age || !username || !password) {
       return res.status(400).json({ error: 'Name, age, username, and password are required.' });
     }
+    
+    // Get parent's subscription status
+    const parentResult = await pool.query('SELECT subscription_status FROM parents WHERE id = $1', [parentId]);
+    const subscriptionStatus = parentResult.rows[0]?.subscription_status || 'free';
+    
     // Check if username exists
     const existing = await pool.query('SELECT id FROM children WHERE username = $1', [username]);
     if (existing.rows.length > 0) {
       return res.status(409).json({ error: 'Username already taken.' });
     }
+    
+    // Check child limit based on subscription
+    const childrenCount = await pool.query('SELECT COUNT(*) FROM children WHERE parent_id = $1', [parentId]);
+    const currentChildrenCount = parseInt(childrenCount.rows[0].count);
+    
+    if (subscriptionStatus === 'free' && currentChildrenCount >= 1) {
+      return res.status(403).json({ error: 'Free plan allows only 1 child. Upgrade to add more children.' });
+    }
+    
+    if (subscriptionStatus === 'basic' && currentChildrenCount >= 3) {
+      return res.status(403).json({ error: 'Basic plan allows up to 3 children. Upgrade to Premium for unlimited children.' });
+    }
+    
+    // Set default daily limit based on subscription
+    let defaultLimit = 60; // free
+    if (subscriptionStatus === 'basic') defaultLimit = 120;
+    if (subscriptionStatus === 'premium') defaultLimit = 999; // effectively unlimited
+    
+    const finalLimit = daily_limit_minutes || defaultLimit;
+    
     const password_hash = await bcrypt.hash(password, 10);
     const result = await pool.query(
       `INSERT INTO children (parent_id, name, age, username, password_hash, daily_limit_minutes)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, name, age, username, daily_limit_minutes, is_active, created_at`,
-      [parentId, name, age, username, password_hash, daily_limit_minutes || 60]
+      [parentId, name, age, username, password_hash, finalLimit]
     );
+    
+    console.log(`Child created for parent ${parentId} (${subscriptionStatus} plan): ${name}`);
     res.status(201).json({ child: result.rows[0] });
   } catch (err) {
     console.error('Create child error:', err);
@@ -455,6 +484,175 @@ app.put('/api/children/:child_id/usage-limit', authenticateToken, async (req, re
     }
     res.json({ child: result.rows[0] });
 });
+
+// // get parent subscription status
+// app.get('/api/parent/subscription', authenticateToken, async (req, res) => {
+//   try {
+//     if (req.user.type !== 'parent') {
+//       return res.status(403).json({ error: 'Parent access required.' });
+//     }
+    
+//     const result = await pool.query(
+//       'SELECT subscription_status, created_at FROM parents WHERE id = $1',
+//       [req.user.id]
+//     );
+    
+//     if (result.rows.length === 0) {
+//       return res.status(404).json({ error: 'Parent not found.' });
+//     }
+    
+//     res.json({ subscription: result.rows[0] });
+//   } catch (err) {
+//     console.error('Get subscription error:', err);
+//     res.status(500).json({ error: 'Failed to fetch subscription status.' });
+//   }
+// });
+
+// // update parent subscription status
+// app.put('/api/parent/subscription', authenticateToken, async (req, res) => {
+//   try {
+//     const { subscription_status } = req.body;
+    
+//     if (req.user.type !== 'parent') {
+//       return res.status(403).json({ error: 'Parent access required.' });
+//     }
+    
+//     if (!['free', 'basic', 'premium'].includes(subscription_status)) {
+//       return res.status(400).json({ error: 'Invalid subscription status.' });
+//     }
+    
+//     const result = await pool.query(
+//       'UPDATE parents SET subscription_status = $1 WHERE id = $2 RETURNING subscription_status, created_at',
+//       [subscription_status, req.user.id]
+//     );
+    
+//     if (result.rows.length === 0) {
+//       return res.status(404).json({ error: 'Parent not found.' });
+//     }
+    
+//     console.log(`Parent ${req.user.id} subscription updated to: ${subscription_status}`);
+//     res.json({ subscription: result.rows[0] });
+//   } catch (err) {
+//     console.error('Update subscription error:', err);
+//     res.status(500).json({ error: 'Failed to update subscription status.' });
+//   }
+// });
+
+// // create payment intent for Stripe
+// app.post('/api/payment/create-intent', authenticateToken, async (req, res) => {
+//   try {
+//     const { plan } = req.body;
+    
+//     if (req.user.type !== 'parent') {
+//       return res.status(403).json({ error: 'Parent access required.' });
+//     }
+    
+//     // Validate plan and get price
+//     const validPlans = {
+//       'basic': { price: 999, currency: 'usd', features: ['Unlimited children', 'Extended daily limits', 'Priority support'] },
+//       'premium': { price: 1999, currency: 'usd', features: ['All basic features', 'Advanced analytics', 'Custom topics', '24/7 support'] }
+//     };
+    
+//     if (!validPlans[plan]) {
+//       return res.status(400).json({ error: 'Invalid plan selected.' });
+//     }
+    
+//     // Create payment intent with Stripe
+//     const paymentIntent = await stripe.paymentIntents.create({
+//       amount: validPlans[plan].price, // Amount in cents
+//       currency: validPlans[plan].currency,
+//       metadata: {
+//         parent_id: req.user.id,
+//         plan: plan,
+//         email: req.user.email
+//       }
+//     });
+    
+//     res.json({
+//       clientSecret: paymentIntent.client_secret,
+//       plan: plan,
+//       price: validPlans[plan].price / 100, // Convert back to dollars for display
+//       features: validPlans[plan].features
+//     });
+//   } catch (err) {
+//     console.error('Payment intent creation error:', err);
+//     res.status(500).json({ error: 'Failed to create payment intent.' });
+//   }
+// });
+
+// // process payment with Stripe
+// app.post('/api/payment/process', authenticateToken, async (req, res) => {
+//   try {
+//     const { paymentIntentId, plan } = req.body;
+    
+//     if (req.user.type !== 'parent') {
+//       return res.status(403).json({ error: 'Parent access required.' });
+//     }
+    
+//     // Verify the payment intent
+//     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    
+//     if (paymentIntent.status !== 'succeeded') {
+//       return res.status(400).json({ error: 'Payment not completed.' });
+//     }
+    
+//     // Verify the payment belongs to this parent
+//     if (paymentIntent.metadata.parent_id !== req.user.id) {
+//       return res.status(403).json({ error: 'Payment verification failed.' });
+//     }
+    
+//     // Update subscription status in database
+//     const paymentResult = await pool.query(
+//       'UPDATE parents SET subscription_status = $1 WHERE id = $2 RETURNING subscription_status',
+//       [plan, req.user.id]
+//     );
+    
+//     console.log(`Stripe payment processed for parent ${req.user.id}: ${plan} plan (Payment Intent: ${paymentIntentId})`);
+    
+//     res.json({
+//       success: true,
+//       message: 'Payment processed successfully!',
+//       subscription: {
+//         status: paymentResult.rows[0].subscription_status,
+//         plan: plan,
+//         paymentIntentId: paymentIntentId
+//       }
+//     });
+//   } catch (err) {
+//     console.error('Payment processing error:', err);
+//     res.status(500).json({ error: 'Payment processing failed.' });
+//   }
+// });
+
+// // Stripe webhook handler (for subscription management)
+// app.post('/api/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+//   const sig = req.headers['stripe-signature'];
+//   let event;
+  
+//   try {
+//     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+//   } catch (err) {
+//     console.error('Webhook signature verification failed:', err.message);
+//     return res.status(400).send(`Webhook Error: ${err.message}`);
+//   }
+  
+//   // Handle the event
+//   switch (event.type) {
+//     case 'payment_intent.succeeded':
+//       const paymentIntent = event.data.object;
+//       console.log('Payment succeeded:', paymentIntent.id);
+//       // You can add additional logic here for subscription management
+//       break;
+//     case 'payment_intent.payment_failed':
+//       const failedPayment = event.data.object;
+//       console.log('Payment failed:', failedPayment.id);
+//       break;
+//     default:
+//       console.log(`Unhandled event type ${event.type}`);
+//   }
+  
+//   res.json({ received: true });
+// });
 
 // helper function to only allow child JWT
 function requireChildJWT(req, res, next) {
