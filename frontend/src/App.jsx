@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import ParentRegister from './ParentRegister';
 import Login from './Login';
 import ParentDashboard from './ParentDashboard';
