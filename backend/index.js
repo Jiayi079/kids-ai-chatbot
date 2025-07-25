@@ -238,19 +238,22 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/children', authenticateToken, async (req, res) => {
   try {
     const parentId = req.user.id;
-    const { name, age, daily_limit_minutes } = req.body;
-    if (!name || !age) {
-      return res.status(400).json({ error: 'Name and age are required.' });
+    const { name, age, username, password, daily_limit_minutes } = req.body;
+    if (!name || !age || !username || !password) {
+      return res.status(400).json({ error: 'Name, age, username, and password are required.' });
     }
-
+    // Check if username exists
+    const existing = await pool.query('SELECT id FROM children WHERE username = $1', [username]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'Username already taken.' });
+    }
+    const password_hash = await bcrypt.hash(password, 10);
     const result = await pool.query(
-      `INSERT INTO children (parent_id, name, age, daily_limit_minutes)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, name, age, daily_limit_minutes, is_active, created_at`,
-      [parentId, name, age, daily_limit_minutes || 60]
+      `INSERT INTO children (parent_id, name, age, username, password_hash, daily_limit_minutes)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, name, age, username, daily_limit_minutes, is_active, created_at`,
+      [parentId, name, age, username, password_hash, daily_limit_minutes || 60]
     );
-
-    console.log(`Child created: ${name} (parent: ${parentId}) at ${new Date().toISOString()}`);
     res.status(201).json({ child: result.rows[0] });
   } catch (err) {
     console.error('Create child error:', err);
@@ -352,14 +355,27 @@ app.post('/api/chat-message', authenticateToken, requireChildJWT, async (req, re
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Backend server running at http://localhost:${PORT}`);
+// update usage limit for a child
+app.put('/api/children/:child_id/usage-limit', authenticateToken, async (req, res) => {
+    const { child_id } = req.params;
+    const { daily_limit_minutes } = req.body;
+    // only allow parent to update their own child's limit
+    const parentId = req.user.id;
+    const result = await pool.query('UPDATE children SET daily_limit_minutes = $1 WHERE id = $2 AND parent_id = $3 RETURNING *', [daily_limit_minutes, child_id, parentId]);
+    if (result.rows.length === 0) {
+      return res.status(403).json({ error: 'Not allowed or child not found.' });
+    }
+    res.json({ child: result.rows[0] });
 });
 
 // helper function to only allow child JWT
 function requireChildJWT(req, res, next) {
-  if (!req.user || req.user.type !== 'child') {
-    return res.status(403).json({ error: 'Child authentication required.' });
-  }
-  next();
+    if (!req.user || req.user.type !== 'child') {
+      return res.status(403).json({ error: 'Child authentication required.' });
+    }
+    next();
 }
+
+app.listen(PORT, () => {
+  console.log(`Backend server running at http://localhost:${PORT}`);
+});
