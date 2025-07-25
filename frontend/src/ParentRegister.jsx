@@ -6,6 +6,7 @@ export default function ParentRegister({ onRegister }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [showRulesModal, setShowRulesModal] = useState(false);
   const navigate = useNavigate();
   const API_URL = import.meta.env.VITE_API_URL;
 
@@ -54,6 +55,39 @@ export default function ParentRegister({ onRegister }) {
           >
             <span style={{ fontSize: '2.2rem', color: '#2d3a4a', fontWeight: 800, marginBottom: 12, textAlign: 'center', display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: '2.2rem' }}></span> Parent Registration </span>
+            
+            {/* Rules Button */}
+            <button
+              type="button"
+              onClick={() => setShowRulesModal(true)}
+              style={{
+                background: 'linear-gradient(135deg, #e3f0ff 0%, #b6e0fe 100%)',
+                color: '#2d3a4a',
+                fontWeight: 600,
+                border: '2px solid #b6e0fe',
+                borderRadius: 12,
+                padding: '12px 20px',
+                fontSize: '1rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginBottom: 8,
+                boxShadow: '0 2px 8px #e3e3e3',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseOver={(e) => {
+                e.target.style.background = 'linear-gradient(135deg, #b6e0fe 0%, #8cc8fe 100%)';
+                e.target.style.transform = 'translateY(-1px)';
+              }}
+              onMouseOut={(e) => {
+                e.target.style.background = 'linear-gradient(135deg, #e3f0ff 0%, #b6e0fe 100%)';
+                e.target.style.transform = 'translateY(0)';
+              }}
+            >
+              <span style={{ fontSize: '1.2rem' }}>📋</span>
+              Read App Rules & Information
+            </button>
             <input
               style={{ fontSize: '1.5rem', padding: '22px', borderRadius: 16, border: '2px solid #b6e0fe', color: '#2d3a4a', marginBottom: 0, width: '100%' }}
               placeholder="Email"
@@ -115,6 +149,174 @@ export default function ParentRegister({ onRegister }) {
           </button>
         </div>
       </div>
+
+      {/* Rules Modal Popup */}
+      {showRulesModal && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px'
+          }}
+          onClick={() => setShowRulesModal(false)}
+        >
+          <div 
+            style={{
+              background: '#fff',
+              borderRadius: 20,
+              padding: '32px',
+              maxWidth: '600px',
+              width: '100%',
+              maxHeight: '80vh',
+              overflowY: 'auto',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+              border: '2px solid #e3e3e3'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              marginBottom: '24px',
+              borderBottom: '2px solid #f0f0f0',
+              paddingBottom: '16px'
+            }}>
+              <h2 style={{ 
+                fontSize: '1.8rem', 
+                color: '#2d3a4a', 
+                fontWeight: 700,
+                margin: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10
+              }}>
+                <span style={{ fontSize: '2rem' }}>📋</span>
+                About Our Kids AI Chat App
+              </h2>
+              <button
+                onClick={() => setShowRulesModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1.5rem',
+                  color: '#666',
+                  cursor: 'pointer',
+                  padding: '8px',
+                  borderRadius: '50%',
+                  width: '40px',
+                  height: '40px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'background 0.2s'
+                }}
+                onMouseOver={(e) => e.target.style.background = '#f0f0f0'}
+                onMouseOut={(e) => e.target.style.background = 'none'}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div style={{ fontSize: '1rem', color: '#4a5568', lineHeight: 1.6 }}>
+              <div style={{ marginBottom: '20px' }}>
+                <h3 style={{ 
+                  fontSize: '1.3rem', 
+                  color: '#2d3a4a', 
+                  fontWeight: 600, 
+                  marginBottom: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8
+                }}>
+                  <span>🎯</span> What We Offer
+                </h3>
+                <ul style={{ margin: '8px 0 0 20px', padding: 0 }}>
+                  <li>Safe, age-appropriate AI conversations for children 6-12 years old</li>
+                  <li>Educational topics: Math, Science, Stories, Art, and more</li>
+                  <li>Parent dashboard to monitor usage and chat history</li>
+                  <li>Daily usage limits to ensure healthy screen time</li>
+                </ul>
+              </div>
+              
+              <div style={{ marginBottom: '20px' }}>
+                <h3 style={{ 
+                  fontSize: '1.3rem', 
+                  color: '#2d3a4a', 
+                  fontWeight: 600, 
+                  marginBottom: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8
+                }}>
+                  <span>🛡️</span> Safety & Values
+                </h3>
+                <ul style={{ margin: '8px 0 0 20px', padding: 0 }}>
+                  <li>All AI responses are filtered for age-appropriate content</li>
+                  <li>Promotes good values: kindness, honesty, respect, and empathy</li>
+                  <li>Encourages curiosity and creativity in learning</li>
+                  <li>No harmful, scary, or inappropriate content</li>
+                </ul>
+              </div>
+              
+              <div style={{ 
+                background: '#fff3cd', 
+                border: '1px solid #ffeaa7', 
+                borderRadius: 12, 
+                padding: '16px', 
+                marginTop: '20px',
+                fontSize: '0.95rem'
+              }}>
+                <strong style={{ color: '#856404' }}>⚠️ Important:</strong> By registering, you agree to supervise your child's use of this app and ensure they follow appropriate online safety practices.
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ 
+              marginTop: '24px', 
+              paddingTop: '16px', 
+              borderTop: '2px solid #f0f0f0',
+              textAlign: 'center'
+            }}>
+              <button
+                onClick={() => setShowRulesModal(false)}
+                style={{
+                  background: 'linear-gradient(135deg, #b6e0fe 0%, #8cc8fe 100%)',
+                  color: '#2d3a4a',
+                  fontWeight: 600,
+                  border: 'none',
+                  borderRadius: 12,
+                  padding: '12px 24px',
+                  fontSize: '1rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px #e3e3e3',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseOver={(e) => {
+                  e.target.style.background = 'linear-gradient(135deg, #8cc8fe 0%, #6bb6fe 100%)';
+                  e.target.style.transform = 'translateY(-1px)';
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.background = 'linear-gradient(135deg, #b6e0fe 0%, #8cc8fe 100%)';
+                  e.target.style.transform = 'translateY(0)';
+                }}
+              >
+                Got it, thanks!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

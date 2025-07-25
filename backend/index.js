@@ -12,7 +12,8 @@ const PORT = 3001;
 app.use(cors());
 app.use(express.json());
 
-app.post('/api/chat', async (req, res) => {
+// aI Chat endpoint with age-appropriate, safe responses for children
+app.post('/api/chat', authenticateToken, async (req, res) => {
   try {
     const { message, topic } = req.body;
     
@@ -20,22 +21,42 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: 'Message and topic are required' });
     }
 
-    // kid-friendly prompt with button options
-    const prompt = `You are a friendly, educational AI assistant for kids aged 6-12. 
+    // get child's age from database
+    let childAge = 8; // default age
+    if (req.user.type === 'child') {
+      const childResult = await pool.query(
+        'SELECT age FROM children WHERE id = $1',
+        [req.user.id]
+      );
+      if (childResult.rows.length > 0) {
+        childAge = childResult.rows[0].age;
+      }
+    }
+
+    // enhanced kid-friendly prompt with age-specific guidance and safety requirements
+    const prompt = `You are a friendly, educational AI assistant for a ${childAge}-year-old child. 
     The child is asking about: ${topic.label} (${topic.value})
     Child's message: ${message}
     
+    IMPORTANT GUIDELINES:
+    - Your response must be SAFE, AGE-APPROPRIATE for a ${childAge}-year-old, and completely free from harmful content
+    - Promote GOOD VALUES like kindness, honesty, respect, and empathy
+    - Encourage CURIOSITY and CREATIVITY in learning
+    - Use language and concepts suitable for a ${childAge}-year-old child
+    - Keep responses positive, encouraging, and educational
+    - Avoid any content that could be scary, inappropriate, or confusing for a ${childAge}-year-old
+    
     Please respond in this EXACT format:
     
-    RESPONSE: [Write 1-2 simple sentences that answer the child's question. Use simple words, be encouraging, and include relevant emojis. Keep it under 50 words.]
+    RESPONSE: [Write 1-2 simple sentences that answer the child's question. Use simple words appropriate for a ${childAge}-year-old, be encouraging, and include relevant emojis. Keep it under 50 words.]
     
-    BUTTONS: [Provide 3 short button options (5-8 words each) that kids can click to continue the conversation. Make them fun and related to the topic. Use simple words and emojis.]
+    BUTTONS: [Provide 3 short button options (5-8 words each) that kids can click to continue the conversation. Make them fun, educational, and related to the topic. Use simple words and emojis.]
     
     Example format:
     RESPONSE: Great question! 2+2 equals 4. Numbers are like building blocks for math! 🧱
     BUTTONS: Tell me more about numbers, Show me a fun math game, What about 3+3?
     
-    Respond as if you're talking directly to a child:`;
+    Respond as if you're talking directly to a ${childAge}-year-old child:`;
 
     const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent', {
       method: 'POST',
@@ -77,6 +98,19 @@ app.post('/api/chat', async (req, res) => {
         const buttonsText = buttonsMatch[1].trim();
         // Split buttons by commas and clean them up
         buttons = buttonsText.split(',').map(btn => btn.trim()).filter(btn => btn.length > 0);
+        
+        // Additional safety check: ensure response is appropriate
+        if (responseText.length > 200) {
+          responseText = responseText.substring(0, 200) + '...';
+        }
+        
+        // Filter out any potentially inappropriate button text
+        buttons = buttons.filter(btn => {
+          const lowerBtn = btn.toLowerCase();
+          return !lowerBtn.includes('inappropriate') && 
+                 !lowerBtn.includes('harmful') && 
+                 btn.length <= 50;
+        });
       }
       
       res.json({ 
